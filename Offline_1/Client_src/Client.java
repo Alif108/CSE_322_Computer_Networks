@@ -5,8 +5,10 @@ import java.util.Scanner;
 
 public class Client {
 
+    private static String student_ID;
     private static DataOutputStream dataOutputStream = null;
     private static DataInputStream dataInputStream = null;
+    private static Scanner sc = null;
 
     @SuppressWarnings("resource")
     public static void main(String[] args) throws UnknownHostException, IOException {
@@ -14,25 +16,57 @@ public class Client {
         Socket socket = new Socket("localhost", 5000);
         System.out.println("Connected to Server...");
 
-        String filePath1 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\alif1.txt";
-        String filePath2 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\alif2.txt";
-        String filePath3 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img.png";
-        String filePath4 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img2.png";
-        String filePath5 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img3.png";
-
         dataInputStream = new DataInputStream(socket.getInputStream());
         dataOutputStream = new DataOutputStream(socket.getOutputStream());
+        sc = new Scanner(System.in);
 
-        sendFile(filePath1);
-        sendFile(filePath2);
-        sendFile(filePath3);
-        sendFile(filePath4);
-        sendFile(filePath5);
+        if(!logIn())                                            // if login is failed
+        {
+            System.out.println("Login Failed");
+            return;
+        }
 
-        dataInputStream.close();
-        dataOutputStream.close();
-        socket.close();
+        while(true)
+        {
+            System.out.println("1. Send File");
+            System.out.println("2. Logout");
+
+            int choice = sc.nextInt();
+            dataOutputStream.writeInt(choice);                  // sending the choice to server
+
+            if(choice == 1)
+            {
+
+//                String filePath1 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\alif1.txt";
+//                String filePath2 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\alif2.txt";
+//                String filePath3 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img.png";
+//                String filePath4 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img2.png";
+//                String filePath5 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img3.png";
+//                String filePath6 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img4.JPG";
+                String filePath7 = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img5.JPG";
+
+//                sendFile(filePath1);
+//                sendFile(filePath2);
+//                sendFile(filePath3);
+//                sendFile(filePath4);
+//                sendFile(filePath5);
+//                sendFile(filePath6);
+                sendFile(filePath7);
+            }
+            else if(choice == 2)
+            {
+                dataInputStream.close();
+                dataOutputStream.close();
+                socket.close();
+                break;
+            }
+            else
+            {
+                System.out.println("Action Not Available");
+            }
+        }
     }
+
 
 //    public static void sendFile(String filePath) throws IOException {
 //        File MyFile = new File(filePath);
@@ -45,6 +79,7 @@ public class Client {
 //        dataOutputStream.writeInt(fileSize);
 //        dataOutputStream.write(buffer,0,bytes);
 //    }
+
 
     public static void sendFile(String filePath) throws IOException {
 
@@ -61,6 +96,7 @@ public class Client {
 
         dataOutputStream.writeInt(fileSize);                            // sending the fileSize
 
+        // sending the file
         while(bytes_left>0 && occupied_buffer_bytes != -1)
         {
             occupied_buffer_bytes = fileInputStream.read(buffer, 0, (int)Math.min(buffer.length, bytes_left));  // reading bytes from file
@@ -71,7 +107,30 @@ public class Client {
             System.out.println(bytes_left + " bytes left");
         }
 
+        dataOutputStream.flush();
         System.out.println("File Sent Successfully");
         fileInputStream.close();
+    }
+
+
+    public static boolean logIn() throws IOException
+    {
+        System.out.println("Input Your Student ID > ");
+        student_ID = sc.nextLine();                                 // taking the student ID input
+
+        dataOutputStream.writeUTF(student_ID);                      // sending ID to server
+
+        String serverApproval  = dataInputStream.readUTF();         // getting the server response
+
+        if(serverApproval.equalsIgnoreCase("login failed"))
+            return false;
+        else
+            return true;
+    }
+
+
+    public static String getStudent_ID()
+    {
+        return student_ID;
     }
 }
