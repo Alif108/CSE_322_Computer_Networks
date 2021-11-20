@@ -4,15 +4,15 @@ import java.net.Socket;
 
 public class ServerThread implements Runnable
 {
-    private static String clientID;
+    private String clientID;
     private Socket clientSocket;
     private Thread t;
-    private static DataInputStream dataInputStream = null;
-    private static DataOutputStream dataOutputStream = null;
+    private DataInputStream dataInputStream = null;
+    private DataOutputStream dataOutputStream = null;
     private Scanner sc = null;
-    private static String serverDirectory = "E:\\Others\\Practice_on_Networking\\File_Server\\Server\\src\\files\\";
-    private static ArrayList<String> client_list = null;
-    private static ArrayList<String> active_client_list = null;
+    private String serverDirectory = "E:\\Others\\Practice_on_Networking\\File_Server\\Server\\src\\files\\";
+    private ArrayList<String> client_list = null;
+    private ArrayList<String> active_client_list = null;
 
     ServerThread(Socket clientSocket, ArrayList<String> c_list, ArrayList<String> ac_list)
     {
@@ -21,10 +21,10 @@ public class ServerThread implements Runnable
             this.clientSocket = clientSocket;
             t = new Thread(this);
 
-            dataInputStream = new DataInputStream(clientSocket.getInputStream());
-            dataOutputStream = new DataOutputStream(clientSocket.getOutputStream());
-            client_list = c_list;
-            active_client_list = ac_list;
+            this.dataOutputStream = new DataOutputStream(clientSocket.getOutputStream());
+            this.dataInputStream = new DataInputStream(clientSocket.getInputStream());
+            this.client_list = c_list;
+            this.active_client_list = ac_list;
 
             t.start();
         }
@@ -34,7 +34,7 @@ public class ServerThread implements Runnable
         }
     }
 
-    
+
     @Override
     public void run()
     {
@@ -56,12 +56,12 @@ public class ServerThread implements Runnable
 
                 if(choice == 1)                                                 // client chooses to send file
                 {
-//                    receiveFile(getDirectory(clientID) + "1.txt", clientID);
-//                    receiveFile(getDirectory(clientID) + "2.txt", clientID);
-//                    receiveFile(getDirectory(clientID) + "3.png", clientID);
-//                    receiveFile(getDirectory(clientID) + "4.png", clientID);
-//                    receiveFile(getDirectory(clientID) + "5.png", clientID);
-//                    receiveFile(getDirectory(clientID) + "6.JPG", clientID);
+                    receiveFile(getDirectory(clientID) + "1.txt", clientID);
+                    receiveFile(getDirectory(clientID) + "2.txt", clientID);
+                    receiveFile(getDirectory(clientID) + "3.png", clientID);
+                    receiveFile(getDirectory(clientID) + "4.png", clientID);
+                    receiveFile(getDirectory(clientID) + "5.png", clientID);
+                    receiveFile(getDirectory(clientID) + "6.JPG", clientID);
                     receiveFile(getDirectory(clientID) + "7.JPG", clientID);
                 }
                 else if(choice == 2)                                            // client chooses logout
@@ -92,7 +92,7 @@ public class ServerThread implements Runnable
     }
 
 
-    private static boolean client_login()
+    private boolean client_login()
     {
         try {
             clientID = dataInputStream.readUTF();               // reading the clientID from client
@@ -102,7 +102,7 @@ public class ServerThread implements Runnable
                 client_list.add(clientID);                      // client is now in all_clients_list
                 active_client_list.add(clientID);               // client is now active
 
-                System.out.println(clientID + " logged in");
+                System.out.println(clientID + " logged in successfully");
                 return makeDirectory(clientID);
             }
             else                                                // client has logged in previously
@@ -127,7 +127,7 @@ public class ServerThread implements Runnable
     }
 
 
-    private static boolean makeDirectory(String clientID)
+    private boolean makeDirectory(String clientID)
     {
         String directory = serverDirectory + clientID;                      // e.g "E:/Server/1705108/"
         File file = new File(directory);
@@ -154,13 +154,13 @@ public class ServerThread implements Runnable
     }
 
 
-    private static String getDirectory(String clientID)
+    private String getDirectory(String clientID)
     {
         return (serverDirectory + clientID + "\\");
     }
 
 
-    private static String getFileExtenstion(String fileName)
+    private String getFileExtenstion(String fileName)
     {
         int index = fileName.lastIndexOf('.');
         if(index > 0)
@@ -175,7 +175,7 @@ public class ServerThread implements Runnable
         }
     }
 
-    private static void receiveFile(String fileName, String clientID) throws Exception{
+    private void receiveFile(String fileName, String clientID) throws Exception{    // TODO: remove clientID from arguments
 
         System.out.println("Receiving file: " + fileName);
         System.out.println("File extension: " + getFileExtenstion(fileName));

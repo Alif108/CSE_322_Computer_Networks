@@ -4,8 +4,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 public class Server {
-//    private static DataOutputStream dataOutputStream = null;
-//    private static DataInputStream dataInputStream = null;
+
     private static ArrayList<String> client_list = null;
     private static ArrayList<String> active_client_list = null;
 
