@@ -1,2 +1,2 @@
 * Implement buffer overflow
-* Implement the rest
+* ClientList does not get updated unless logging in 

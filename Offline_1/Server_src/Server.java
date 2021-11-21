@@ -5,15 +5,15 @@ import java.net.Socket;
 
 public class Server {
 
-    private static ArrayList<String> client_list = null;
-    private static ArrayList<String> active_client_list = null;
+    private static HashMap<String, Boolean> client_list = null;             // clientID, active_status
+    private static HashMap<String, String> file_list = null;                // fileName, fileID
 
     public static void main(String[] args)
     {
         try(ServerSocket serverSocket = new ServerSocket(5000))
         {
-            client_list = new ArrayList<String>();
-            active_client_list = new ArrayList<String>();
+            client_list = new HashMap<String, Boolean>();
+            file_list = new HashMap<String, String>();
 
             System.out.println("Server Started...");
             System.out.println("Listening to port:5000...");
@@ -23,7 +23,7 @@ public class Server {
                 Socket socket = serverSocket.accept();
                 System.out.println( socket + " connected...");
 
-                new ServerThread(socket, client_list, active_client_list);
+                new ServerThread(socket, client_list, file_list);
             }
         }
         catch (Exception e){
