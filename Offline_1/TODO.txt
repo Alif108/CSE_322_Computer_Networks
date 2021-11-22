@@ -1,2 +1,2 @@
-* Implement buffer overflow
 * ClientList does not get updated unless logging in 
+* No Maps get updated during runtime

@@ -1,22 +1,32 @@
 import java.io.*;
 import java.util.*;
 import java.net.Socket;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ServerThread implements Runnable
 {
     private String clientID;
     private Socket clientSocket;
     private Thread t;
-    private DataInputStream dataInputStream = null;
-    private DataOutputStream dataOutputStream = null;
-    private ObjectOutputStream oos = null;
-    private Scanner sc = null;
-    private String serverDirectory = "E:\\Others\\Practice_on_Networking\\File_Server\\Server\\src\\files\\";
-    private static HashMap<String, Boolean> client_list = null;
-    private static HashMap<String, String> file_list = null;
-    private int file_id;                                          // this file_id will be unique
 
-    ServerThread(Socket clientSocket, HashMap<String, Boolean> c_list, HashMap<String, String> f_list)
+    private DataInputStream dataInputStream;
+    private DataOutputStream dataOutputStream;
+    private ObjectOutputStream oos;
+    private Scanner sc;
+
+    private String serverDirectory = "E:\\Others\\Practice_on_Networking\\File_Server\\Server\\src\\files\\";
+    private HashMap<String, Boolean> client_list;
+    private HashMap<String, HashMap<String, Integer>> all_file_list;
+    private HashMap<String, Integer> own_file_list;
+    private int file_count;                                          // this file_id will be unique
+
+    private AtomicInteger chunks_stored;
+    private int MAX_BUFFER_SIZE;
+    private int MAX_CHUNK_SIZE;
+    private int MIN_CHUNK_SIZE;
+
+    ServerThread(Socket clientSocket, HashMap<String, Boolean> c_list, HashMap<String, HashMap<String, Integer>> f_list, AtomicInteger chunks_stored, int max_buffer_size,
+                 int max_chunk_size, int min_chunk_size)
     {
         try
         {
@@ -26,9 +36,16 @@ public class ServerThread implements Runnable
             this.dataOutputStream = new DataOutputStream(clientSocket.getOutputStream());
             this.dataInputStream = new DataInputStream(clientSocket.getInputStream());
             this.oos = new ObjectOutputStream(clientSocket.getOutputStream());
-            client_list = c_list;
-            file_list = f_list;
-            file_id = 0;
+
+            this.client_list = c_list;
+            this.all_file_list = f_list;
+            this.chunks_stored = chunks_stored;
+
+            this.MAX_BUFFER_SIZE = max_buffer_size;
+            this.MAX_CHUNK_SIZE = max_chunk_size;
+            this.MIN_CHUNK_SIZE = min_chunk_size;
+
+            file_count = 0;
 
             t.start();
         }
@@ -53,7 +70,6 @@ public class ServerThread implements Runnable
                 dataOutputStream.writeUTF("Login Successful");      // send login successful message
 
             int choice = 0;
-
             while(true)
             {
                 choice = dataInputStream.readInt();                             // reading client choice
@@ -63,23 +79,42 @@ public class ServerThread implements Runnable
                 {
                     int privacy_choice = dataInputStream.readInt();             // getting the privacy choice from client
 
-                    if(privacy_choice == 1 || privacy_choice == 2)
+                    if(privacy_choice == 1 || privacy_choice == 2)              // 1 -> public,  2 -> private
                     {
                         String clientFileName = dataInputStream.readUTF();      // read file name
                         int clientFilesize = dataInputStream.readInt();         // read file size
 
-                        String file_to_be_saved = getDirectory(clientID, privacy_choice) + clientID + "_" + file_id + "." + getFileExtenstion(clientFileName);    // e.g. "private/1705108_1.txt"
+                        if(receiveApproval(clientFilesize))                     // if file is allowed to be sent
+                        {
+                            dataOutputStream.writeUTF("File Sending Allowed");      // sending the approval message
 
-                        receiveFile(file_to_be_saved, clientFilesize);
-                        file_id += 1;                                           // file_id increases
+                            int chunk_size = (int)Math.floor(Math.random()*(MAX_CHUNK_SIZE-MIN_CHUNK_SIZE+1)+MIN_CHUNK_SIZE);               // generating a chunk size
+                            String file_ID = clientID + "_" + privacy_choice + "_" + file_count + "." + getFileExtenstion(clientFileName);  // e.g 1705108_1_0
+
+                            dataOutputStream.writeInt(chunk_size);                  // sending the chunk_size
+                            dataOutputStream.writeUTF(file_ID);                     // sending the file_ID
+
+                            String file_to_be_saved = getDirectory(clientID, privacy_choice) + file_ID;     // e.g. "private/1705108_1_0.txt"
+
+                            receiveFile(file_to_be_saved, clientFilesize, chunk_size);              // receiving the file
+                            file_count += 1;                                        // file_count increases
+
+                            own_file_list.put(file_ID, privacy_choice);             // adding the file to own files list
+                            all_file_list.put(clientID, own_file_list);             // updating the list in all files list
+                        }
+                        else
+                        {
+                            dataOutputStream.writeUTF("Buffer Overflow, Please Wait");
+                        }
                     }
-                    else                                                        // invalid privacy choice
+                    else                                                            // invalid privacy choice
                         continue;
                 }
 
                 // --- client chooses to lookup users --- //
                 else if(choice == 2)
                 {
+                    System.out.println(client_list);
                     oos.writeObject(client_list);
                 }
 
@@ -96,24 +131,17 @@ public class ServerThread implements Runnable
                     oos.writeObject(private_files);                     // sending the private_files list to client
                 }
 
-                // --- client chooses to logout --- //
+                // --- client chooses to see all the public files --- //
                 else if(choice == 4)
                 {
+                    oos.writeObject(all_file_list);                     // sending the all_file_list to the client
+                }
+
+                // --- client chooses to logout --- //
+                else if(choice == 5)
+                {
                     // closing the socket
-                    try
-                    {
-                        dataInputStream.close();
-                        dataOutputStream.close();
-                        clientSocket.close();
-
-                        client_list.put(clientID, false);
-
-                        System.out.println("Client " + clientID + " Logged Out");
-                    }
-                    catch (Exception ex)
-                    {
-                        ex.printStackTrace();
-                    }
+                    client_logout();
                     break;
                 }
 
@@ -135,13 +163,20 @@ public class ServerThread implements Runnable
     private boolean client_login()
     {
         try {
-            clientID = dataInputStream.readUTF();               // reading the clientID from client
+            clientID = dataInputStream.readUTF();                                   // reading the clientID from client
 
             if(!client_list.containsKey(clientID))
             {
-                client_list.put(clientID, true);
+                synchronized (client_list)
+                {
+                    client_list.put(clientID, true);                                // making the client active
+                }
+                // --- setting up the list of own files --- ///
+                if(all_file_list.get(clientID) != null)
+                    this.own_file_list = all_file_list.get(clientID);               // getting the own_file_list
+                else
+                    this.own_file_list = new HashMap<String, Integer>();            // initializing the own_file_list
 
-                System.out.println(clientID + " logged in successfully");
                 return makeDirectory(clientID);
             }
             else
@@ -153,8 +188,17 @@ public class ServerThread implements Runnable
                 }
                 else
                 {
-                    client_list.put(clientID, true);
-                    System.out.println(clientID + " logged in successfully");
+                    synchronized (client_list)
+                    {
+                        client_list.put(clientID, true);                                // making the client active
+                    }
+
+                    // --- setting up the list of own files --- ///
+                    if(all_file_list.get(clientID) != null)
+                        this.own_file_list = all_file_list.get(clientID);               // getting the own_file_list
+                    else
+                        this.own_file_list = new HashMap<String, Integer>();            // initializing the own_file_list
+
                     return makeDirectory(clientID);
                 }
             }
@@ -163,6 +207,27 @@ public class ServerThread implements Runnable
         {
             ex.printStackTrace();
             return false;
+        }
+    }
+
+    private void client_logout()
+    {
+        try
+        {
+            dataInputStream.close();
+            dataOutputStream.close();
+            clientSocket.close();
+
+            synchronized (client_list)
+            {
+                client_list.put(clientID, false);
+            }
+
+            System.out.println("Client " + clientID + " Logged Out");
+        }
+        catch (Exception ex)
+        {
+            ex.printStackTrace();
         }
     }
 
@@ -225,33 +290,40 @@ public class ServerThread implements Runnable
         }
     }
 
-    private void receiveFile(String fileName, int clientFileSize) throws Exception
-    {                 // TODO: remove clientID from arguments
+    private boolean receiveApproval(int file_size)
+    {
+        return !(chunks_stored.get() + file_size > MAX_BUFFER_SIZE);
+    }
 
-        System.out.println("Receiving file: " + fileName);
 
-        int chunk_size = 4 * 1024;                                              // 4 KB
+    private void receiveFile(String filePath, int clientFileSize, int chunk_size) throws Exception
+    {
         int occupied_buffer_bytes = 0;                                          // buffer is empty
-        FileOutputStream fileOutputStream = new FileOutputStream(fileName);
-
-        System.out.println("Incoming File Size:" + clientFileSize);
+        FileOutputStream fileOutputStream = new FileOutputStream(filePath);
 
         byte[] buffer = new byte[chunk_size];                                   // buffer with size of chunk_size
         int bytes_left = clientFileSize;                                        // whole file is left to be sent
 
+        chunks_stored.addAndGet(chunk_size);
+
         while (bytes_left > 0 && occupied_buffer_bytes != -1)
         {
-            System.out.println("Available bytes : " + dataInputStream.available());
+//            System.out.println("Available bytes : " + dataInputStream.available());
 
             occupied_buffer_bytes = dataInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));      // reading from input stream and putting it into buffer
+
             fileOutputStream.write(buffer,0, occupied_buffer_bytes);                                            // writing to file
 
-            System.out.println("Client: " + clientID + "->" + occupied_buffer_bytes + " bytes received");
+//            System.out.println("Client: " + clientID + "->" + occupied_buffer_bytes + " bytes received");
 
             bytes_left -= occupied_buffer_bytes;
-            System.out.println("Client: " + clientID + "->" + bytes_left + " bytes left");
+//            System.out.println("Client: " + clientID + "->" + bytes_left + " bytes left");
         }
+
+        chunks_stored.addAndGet(-chunk_size);
+
         System.out.println("File Received Successfully");
+        System.out.println("File Saved In: " + filePath);
         fileOutputStream.close();
     }
 }
