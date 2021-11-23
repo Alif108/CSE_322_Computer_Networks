@@ -16,9 +16,8 @@ public class ServerThread implements Runnable
 
     private String serverDirectory = "E:\\Others\\Practice_on_Networking\\File_Server\\Server\\src\\files\\";
     private HashMap<String, Boolean> client_list;
-    private HashMap<String, HashMap<String, Integer>> all_file_list;
-    private HashMap<String, Integer> own_file_list;
-    private int file_count;                                          // this file_id will be unique
+    private HashMap<String, HashMap<String, String>> all_file_list;
+    private HashMap<String, String> own_file_list;
 
     private AtomicInteger chunks_stored;
     private int MAX_BUFFER_SIZE;
@@ -26,7 +25,7 @@ public class ServerThread implements Runnable
     private int MIN_CHUNK_SIZE;
 
 
-    ServerThread(Socket clientSocket, HashMap<String, Boolean> c_list, HashMap<String, HashMap<String, Integer>> f_list, AtomicInteger chunks_stored, int max_buffer_size,
+    ServerThread(Socket clientSocket, HashMap<String, Boolean> c_list, HashMap<String, HashMap<String, String>> f_list, AtomicInteger chunks_stored, int max_buffer_size,
                  int max_chunk_size, int min_chunk_size)
     {
         try
@@ -45,8 +44,6 @@ public class ServerThread implements Runnable
             this.MAX_BUFFER_SIZE = max_buffer_size;
             this.MAX_CHUNK_SIZE = max_chunk_size;
             this.MIN_CHUNK_SIZE = min_chunk_size;
-
-            file_count = 0;
 
             t.start();
         }
@@ -82,33 +79,33 @@ public class ServerThread implements Runnable
 
                     if(privacy_choice == 1 || privacy_choice == 2)                      // 1 -> public,  2 -> private
                     {
-                        String clientFileName = dataInputStream.readUTF();              // read file name
-                        int clientFilesize = dataInputStream.readInt();                 // read file size
+                        String clientFileName = dataInputStream.readUTF();              // read file name from client
+                        int clientFilesize = dataInputStream.readInt();                 // read file size from client
 
                         if(receiveApproval(clientFilesize))                             // if file is allowed to be sent
                         {
                             dataOutputStream.writeUTF("File Sending Allowed");      // sending the approval message
 
-                            int chunk_size = (int)Math.floor(Math.random()*(MAX_CHUNK_SIZE-MIN_CHUNK_SIZE+1)+MIN_CHUNK_SIZE);               // generating a chunk size
-                            String file_ID = clientID + "_" + privacy_choice + "_" + file_count + "." + getFileExtenstion(clientFileName);  // e.g 1705108_1_0
+                            int chunk_size = (int)Math.floor(Math.random()*(MAX_CHUNK_SIZE-MIN_CHUNK_SIZE+1)+MIN_CHUNK_SIZE);   // generating a chunk size
+                            String file_ID = clientID + "_" + privacy_choice + "_" + get_file_count();                                // e.g 1705108_1_0
 
                             dataOutputStream.writeInt(chunk_size);                      // sending the chunk_size
                             dataOutputStream.writeUTF(file_ID);                         // sending the file_ID
 
-                            String file_to_be_saved = getDirectory(clientID, privacy_choice) + file_ID;     // e.g. "private/1705108_1_0.txt"
+                            String file_to_be_saved = get_client_directory(clientID, privacy_choice) + clientFileName;     // e.g. "serverDir/1705108/private/random.txt"
 
                             receiveFile(file_to_be_saved, clientFilesize, chunk_size);              // receiving the file
-                            file_count += 1;                                            // file_count increases
+                            increase_file_count();                                                  // file_count increases
 
-                            own_file_list.put(file_ID, privacy_choice);                 // adding the file to own files list
+                            own_file_list.put(file_ID, clientFileName);                 // adding the file to own files list
                             all_file_list.put(clientID, own_file_list);                 // updating the list in all files list
                         }
                         else
                         {
-                            dataOutputStream.writeUTF("Buffer Overflow, Please Wait");
+                            dataOutputStream.writeUTF("Buffer Overflow, Please Wait");  // sending the non-approval message
                         }
                     }
-                    else                                                            // invalid privacy choice
+                    else                                                                    // invalid privacy choice
                         continue;
                 }
 
@@ -122,8 +119,8 @@ public class ServerThread implements Runnable
                 // --- client chooses to see his/her uploaded contents --- //
                 else if(choice == 3)
                 {
-                    File public_dir = new File(getDirectory(clientID, 1));
-                    File private_dir = new File(getDirectory(clientID, 2));
+                    File public_dir = new File(get_client_directory(clientID, 1));
+                    File private_dir = new File(get_client_directory(clientID, 2));
 
                     String[] public_files = public_dir.list();          // listing all the public filenames as String[]
                     String[] private_files = private_dir.list();        // listing all the private filenames as String[]
@@ -138,8 +135,43 @@ public class ServerThread implements Runnable
                     oos.writeObject(all_file_list);                     // sending the all_file_list to the client
                 }
 
-                // --- client chooses to logout --- //
+                // --- client chooses to download file --- //
                 else if(choice == 5)
+                {
+                    String requested_file_id = dataInputStream.readUTF();
+                    System.out.println("Client wants to download: " + requested_file_id);
+
+                    String filepath = get_file_directory(requested_file_id);            // getting the file_path
+
+                    if (filepath == null) {
+                        System.out.println("File Not Found");
+                        dataOutputStream.writeUTF("File Not Found");
+                        continue;
+                    } else
+                        dataOutputStream.writeUTF("File Exists");
+
+                    try {
+                        File myFile = new File(filepath);
+                        String filename = myFile.getName();                             // getting the filename
+                        int fileSize = (int) myFile.length();                           // getting the filesize
+
+                        dataOutputStream.writeUTF(filename);                            // sending the filename
+                        dataOutputStream.writeInt(fileSize);                            // sending the file size
+                        dataOutputStream.writeInt(MAX_CHUNK_SIZE);                      // sending the chunk_size
+
+                        sendFile(filepath, fileSize);
+                    }
+                    catch (NullPointerException e)
+                    {
+                        e.printStackTrace();
+                        System.out.println("File Not Found");
+                        dataOutputStream.writeUTF("File Not Found");
+                        continue;
+                    }
+                }
+
+                // --- client chooses to logout --- //
+                else if(choice == 6)
                 {
                     // closing the socket
                     client_logout();
@@ -160,25 +192,16 @@ public class ServerThread implements Runnable
         }
     }
 
-
+    /// this method puts the client in the client_list, makes him online and fetches/initializes his files_list and file_count
     private boolean client_login()
     {
-        /// this method puts the client in the client_list, makes him online and fetches/initializes his files_list
-
         try {
             clientID = dataInputStream.readUTF();                                   // reading the clientID from client
 
             if(!client_list.containsKey(clientID))                                  // if client has never logged in before
             {
-                synchronized (client_list)
-                {
-                    client_list.put(clientID, true);                                // making the client online
-                }
-                // --- setting up the list of own files --- ///
-                if(all_file_list.get(clientID) != null)                             // if there is file_list of this user
-                    this.own_file_list = all_file_list.get(clientID);               // getting the own_file_list
-                else                                                                // if no file_list of this user
-                    this.own_file_list = new HashMap<String, Integer>();            // initializing the own_file_list
+                client_list.put(clientID, true);                                    // making the client online
+                this.own_file_list = new HashMap<String, String>();                 // initializing the own_file_list
 
                 return makeDirectory(clientID);
             }
@@ -191,16 +214,8 @@ public class ServerThread implements Runnable
                 }
                 else
                 {
-                    synchronized (client_list)
-                    {
-                        client_list.put(clientID, true);                                // making the client active
-                    }
-
-                    // --- setting up the list of own files --- ///
-                    if(all_file_list.get(clientID) != null)                             // if there is file_list of this user
-                        this.own_file_list = all_file_list.get(clientID);               // getting the own_file_list
-                    else                                                                // if no file_list of this user
-                        this.own_file_list = new HashMap<String, Integer>();            // initializing the own_file_list
+                    client_list.put(clientID, true);                                // making the client active
+                    this.own_file_list = all_file_list.get(clientID);               // getting the own_file_list
 
                     return makeDirectory(clientID);
                 }
@@ -213,9 +228,9 @@ public class ServerThread implements Runnable
         }
     }
 
+    /// this method closes all the streams and socket and makes the client offline
     private void client_logout()
     {
-        /// this method closes all the streams and socket and makes the client offline
         try
         {
             dataInputStream.close();
@@ -235,13 +250,54 @@ public class ServerThread implements Runnable
         }
     }
 
-
-    private boolean makeDirectory(String clientID)
+    /// this method reads the file_count saved in the txt file, and adds 1 to it
+    private void increase_file_count()
     {
-        /// this method create directories (main directory, private and public) for a user
-        /// returns true if directory creates/exits, false otherwise
+        try
+        {
+            String dir = serverDirectory + clientID + "\\file_count.txt";       // getting the directory
 
-        String directory = serverDirectory + clientID;                      // e.g "E:/Server/1705108/"
+            FileReader fr = new FileReader(dir);
+            int fileCount = Character.getNumericValue(fr.read());               // reading the count
+            fr.close();
+
+            fileCount += 1;                                                     // increasing the count
+
+            FileWriter fw = new FileWriter(dir);
+            fw.write((char)(fileCount+'0'));                                    // writing count to the file
+            fw.close();
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    /// this method returns the file count
+    private int get_file_count()
+    {
+        try {
+            String dir = serverDirectory + clientID + "\\file_count.txt";       // getting the directory
+
+            FileReader fr = new FileReader(dir);
+            int fileCount = Character.getNumericValue(fr.read());               // reading the file count
+            fr.close();
+
+            return fileCount;
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            return -1;
+        }
+    }
+
+
+    /// this method create directories (main directory, private and public) and file_count.txt file in the main directory
+    /// returns true if directory creates/exists, false otherwise
+    private boolean makeDirectory(String clientID) throws IOException
+    {
+        String directory = serverDirectory + clientID;                      // e.g "E:/Server/1705108"
         File file = new File(directory);
 
         if (!file.exists())                                                 // if directory does not exist
@@ -251,9 +307,19 @@ public class ServerThread implements Runnable
                 String private_directory = directory + "\\private";
                 String public_directory = directory + "\\public";
 
-                if((new File(private_directory).mkdir()) && (new File(public_directory).mkdir()))       // if both public and private directories are created
+                String file_count_directory = directory + "\\file_count.txt";
+                File fileCount = new File(file_count_directory);            // keeps the track files being uploaded
+
+                if((new File(private_directory).mkdir()) && (new File(public_directory).mkdir()) && (fileCount.createNewFile()))       // if public, private directories and file_count are created
                 {
+                    System.out.println(clientID + " logged in");
                     System.out.println("Directories Created Successfully");
+
+                    // -- initializing the file count -- //
+                    FileWriter fw = new FileWriter(fileCount);
+                    fw.write("0");                                       // file_count = 0
+                    fw.close();
+
                     return true;
                 }
                 else
@@ -267,27 +333,44 @@ public class ServerThread implements Runnable
         }
         else                                                                // directory exists previously
         {
+            System.out.println(clientID + " logged in");
             System.out.println("Directory Exists");
             return true;
         }
     }
 
-
-    private String getDirectory(String clientID, int choice)
+    /// this method returns the public/private directory of a user
+    private String get_client_directory(String clientID, int choice)
     {
-        /// this method returns the public/private directory of a user
-
         if(choice == 1)
             return (serverDirectory + clientID + "\\public\\");
         else
             return (serverDirectory + clientID + "\\private\\");
     }
 
+    /// returns the corresponding file directory againt a fileID
+    /// used in sending file to client
+    private String get_file_directory(String fileID)
+    {
+        String[] file_info = fileID.split("_");                                                 // "1705108_1_23" -> ["1705108", "1", "23"]
 
+        HashMap<String, String> client_file_list = all_file_list.get(file_info[0]);                 // getting the file list of the corresponding user
+
+        if(client_file_list == null)                                                                // if no user found
+            return null;
+
+        String filename = client_file_list.get(fileID);                                             // filename = "img.JPG"
+
+        if(filename == null)                                                                        // if no file found under this ID
+            return null;
+
+        String directory = get_client_directory(file_info[0], Integer.parseInt(file_info[1]));      // directory = "serverDir/1705108/public/"
+        return directory + filename;                                                                // "serverDir/1705108/public/img.JPG"
+    }
+
+    /// returns a file extension    e.g. "1705108.pdf" -> "pdf"
     private String getFileExtenstion(String fileName)
     {
-        /// returns a file extension    e.g. "1705108.pdf" -> "pdf"
-
         int index = fileName.lastIndexOf('.');
         if(index > 0)
         {
@@ -301,15 +384,16 @@ public class ServerThread implements Runnable
         }
     }
 
+    /// checks the total size of all chunks stored in the buffer plus the new file size. If it overflows the
+    /// maximum size, the server does not allow the transmission
     private boolean receiveApproval(int file_size)
     {
-        /// checks the total size of all chunks stored in the buffer plus the new file size. If it overflows the
-        /// maximum size, the server does not allow the transmission
-
         return !(chunks_stored.get() + file_size > MAX_BUFFER_SIZE);
     }
 
-
+    /// receives file in chunks from a client
+    /// puts the file in filePath
+    /// sends acknowledgement to client
     private void receiveFile(String filePath, int clientFileSize, int chunk_size) throws Exception
     {
         int occupied_buffer_bytes = 0;                                          // buffer is empty
@@ -317,10 +401,12 @@ public class ServerThread implements Runnable
 
         byte[] buffer = new byte[chunk_size];                                   // buffer with size of chunk_size
         int bytes_left = clientFileSize;                                        // whole file is left to be sent
+        int chunks_received = 0;
 
         chunks_stored.addAndGet(chunk_size);                                    // adding the occupied buffer size
 //        System.out.println("Chunks Stored (before): " + chunks_stored.get());
 
+        // receiving the file in chunks //
         while (bytes_left > 0 && occupied_buffer_bytes != -1)
         {
             occupied_buffer_bytes = dataInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading from input stream and putting it into buffer
@@ -329,13 +415,75 @@ public class ServerThread implements Runnable
             fileOutputStream.write(buffer,0, occupied_buffer_bytes);                                            // writing to file
 
             bytes_left -= occupied_buffer_bytes;
+            chunks_received += occupied_buffer_bytes;
         }
 
         chunks_stored.addAndGet(-chunk_size);                                   // freeing up the occupied buffer size
 //        System.out.println("Chunks Stored (after): " + chunks_stored.get());
 
-        System.out.println("File Received Successfully");
-        System.out.println("File Path: " + filePath);
+        // File Transfer Completion Confirmation //
+        String completion_confirmation = dataInputStream.readUTF();             // getting client confirmation message of completion
+        System.out.println("From Cilent: " + completion_confirmation);
+
+        if(chunks_received == clientFileSize)                                   // if all the received chunks sums up to file_size
+        {
+            dataOutputStream.writeUTF("File Received Successfully");
+            System.out.println("File Received Successfully");
+            System.out.println("File Path: " + filePath);
+        }
+        else
+        {
+            dataOutputStream.writeUTF("File Receiving Failed");
+            System.out.println("File Receiving Failed");
+        }
+
         fileOutputStream.close();
+    }
+
+    /// sends file (from filePath) to client
+    /// no acknowledgement
+    private void sendFile(String filePath, int fileSize)
+    {
+        System.out.println("Sending file: " + filePath);
+
+        FileInputStream fileInputStream;
+        try
+        {
+            fileInputStream = new FileInputStream(filePath);            // taking the file to be sent in InputStream
+        }
+        catch (FileNotFoundException e) {
+            e.printStackTrace();
+            System.out.println("File Cannot Be Found");
+            return;
+        }
+
+        int occupied_buffer_bytes = 0;                                  // buffer is empty
+        int chunk_size = MAX_CHUNK_SIZE;                                // for client_download, chunks will be sent in max_chunk_size
+        int bytes_left = fileSize;                                      // whole file is left to sent
+        byte[] buffer = new byte[chunk_size];                           // buffer with size of chunk_size
+
+        try
+        {
+            // sending the file in chunks //
+            while (bytes_left > 0 && occupied_buffer_bytes != -1)
+            {
+                occupied_buffer_bytes = fileInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading bytes from file and putting them into buffer
+
+                dataOutputStream.write(buffer, 0, occupied_buffer_bytes);                                           // sending the bytes
+
+                bytes_left -= occupied_buffer_bytes;                                                                    // bytes left to send
+            }
+            dataOutputStream.flush();
+
+            dataOutputStream.writeUTF("File Sending Completed");                //  completion message from the server
+            System.out.println("File Sending Completed");
+
+            fileInputStream.close();
+        }
+        catch (IOException e)
+        {
+            System.out.println("File Sending Failed");
+            e.printStackTrace();
+        }
     }
 }

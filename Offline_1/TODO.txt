@@ -1,5 +1,4 @@
 * ClientList does not get updated unless logging in 
 * No Maps get updated during runtime
 * Get sure about socket.setSoTimeOut()
-* Implement Download
 * Get sure about request
