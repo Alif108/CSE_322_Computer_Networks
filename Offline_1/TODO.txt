@@ -1,4 +1,3 @@
 * ClientList does not get updated unless logging in 
 * No Maps get updated during runtime
 * Get sure about socket.setSoTimeOut()
-* Get sure about request

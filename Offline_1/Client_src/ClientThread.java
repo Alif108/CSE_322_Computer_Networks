@@ -1,8 +1,6 @@
 import java.io.*;
 import java.net.Socket;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
 
 public class ClientThread implements Runnable {
 
@@ -15,15 +13,21 @@ public class ClientThread implements Runnable {
     private Thread t;
     private String client_file_directory = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\downloads\\";
 
-    ClientThread(Socket socket) throws IOException {
-        this.socket = socket;
-        this.dataOutputStream = new DataOutputStream(socket.getOutputStream());
-        this.dataInputStream = new DataInputStream(socket.getInputStream());
-        this.ois = new ObjectInputStream(socket.getInputStream());
-        this.sc = new Scanner(System.in);
+    ClientThread(Socket socket){
+        try {
+            this.socket = socket;
+            this.dataOutputStream = new DataOutputStream(socket.getOutputStream());
+            this.dataInputStream = new DataInputStream(socket.getInputStream());
+            this.ois = new ObjectInputStream(socket.getInputStream());
+            this.sc = new Scanner(System.in);
 
-        t = new Thread(this);
-        t.start();
+            t = new Thread(this);
+            t.start();
+        }
+        catch (IOException ex)
+        {
+            ex.printStackTrace();
+        }
     }
 
     @Override
@@ -43,8 +47,10 @@ public class ClientThread implements Runnable {
                 System.out.println("2. Lookup Users");
                 System.out.println("3. Lookup Own Files");
                 System.out.println("4. Lookup All Public Files");
-                System.out.println("5. Download Files");
-                System.out.println("6. Logout");
+                System.out.println("5. Download File");
+                System.out.println("6. Request File");
+                System.out.println("7. Show File Requests");
+                System.out.println("8. Logout");
 
                 int choice = sc.nextInt();                              // taking choice from user
 
@@ -83,7 +89,7 @@ public class ClientThread implements Runnable {
                         System.out.println("File will be sent in " + chunk_size + " bytes chunk");
                         System.out.println("File ID: " + file_ID);
 
-                        sendFile(filePath, fileSize, chunk_size);               // sending the file
+                        upload_file(filePath, fileSize, chunk_size);               // sending the file
                     }
                 }
 
@@ -122,8 +128,25 @@ public class ClientThread implements Runnable {
                     download_file(client_file_directory + filename, file_size, chunk_size);
                 }
 
+                // --- request file --- //
+                else if(choice == 6)
+                {
+                    System.out.print("Enter Request Description > ");
+                    String req_desc = sc.next();
+                    dataOutputStream.writeUTF(req_desc);                                // sending the request description to server
+
+                    System.out.println("From Server: " + dataInputStream.readUTF());    // server sends : File Request Issued
+                    System.out.println("From Server: " + dataInputStream.readUTF());    // server sends : Request ID: #req_id
+                }
+
+                // --- show all the file requests --- //
+                else if(choice == 7)
+                {
+                    show_file_requests();
+                }
+
                 // --- logout --- //
-                else if (choice == 6)
+                else if (choice == 8)
                 {
                     logout();                               // logout closes all the streams and socket
                     break;
@@ -144,7 +167,7 @@ public class ClientThread implements Runnable {
 
     /// sends file in chunks from the filePath
     /// sends acknowledgement
-    private void sendFile(String filePath, int fileSize, int chunk_size){
+    private void upload_file(String filePath, int fileSize, int chunk_size){
 
         System.out.println("Sending file: " + filePath);
 
@@ -174,8 +197,8 @@ public class ClientThread implements Runnable {
                 dataOutputStream.write(buffer, 0, occupied_buffer_bytes);                                           // sending the bytes
                 int ack = dataInputStream.readInt();
 
-//                System.out.println("Client Sent: " + occupied_buffer_bytes + " bytes");
-//                System.out.println("Server Received: " + ack + " bytes");
+                System.out.println("Client Sent: " + occupied_buffer_bytes + " bytes");
+                System.out.println("Server Received: " + ack + " bytes");
 
                 bytes_left -= occupied_buffer_bytes;                                                                    // bytes left to send
             }
@@ -265,6 +288,7 @@ public class ClientThread implements Runnable {
         {
             dataOutputStream.close();
             dataInputStream.close();
+            ois.close();
             socket.close();
         }
         catch (IOException e) {
@@ -273,30 +297,55 @@ public class ClientThread implements Runnable {
     }
 
     /// this function shows all the files uploaded by the client
+//    private void list_own_files()
+//    {
+//        try
+//        {
+//            String[] public_files = (String[])ois.readObject();             // receiving the public files list
+//            String[] private_files = (String[])ois.readObject();            // receiving the private files list
+//
+//            // showing public files
+//            System.out.println("Public Files");
+//            for (String filename : public_files)
+//            {
+//                System.out.println(filename);
+//            }
+//            System.out.println("\n");
+//
+//            // showing private files
+//            System.out.println("Private Files");
+//            for (String filename : private_files)
+//            {
+//                System.out.println(filename);
+//            }
+//            System.out.println("\n");
+//        }
+//        catch (IOException | ClassNotFoundException e)
+//        {
+//            e.printStackTrace();
+//        }
+//    }
+
+    /// this function shows all the files and their IDs uploaded by the client
     private void list_own_files()
     {
-        try
-        {
-            String[] public_files = (String[])ois.readObject();             // receiving the public files list
-            String[] private_files = (String[])ois.readObject();            // receiving the private files list
+        try{
+            @SuppressWarnings("unchecked") HashMap<String, String> own_file_list = (HashMap<String, String>) ois.readObject();
 
-            // showing public files
-            System.out.println("Public Files");
-            for (String filename : public_files)
+            own_file_list.forEach((fileID, fileName) ->
             {
-                System.out.println(filename);
-            }
-            System.out.println("\n");
+                String[] file_info = fileID.split("_");                     // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
 
-            // showing private files
-            System.out.println("Private Files");
-            for (String filename : private_files)
-            {
-                System.out.println(filename);
-            }
-            System.out.println("\n");
+                System.out.println("File Name: " + fileName);
+                System.out.println("File ID: " + fileID);
+                if(file_info[1].equalsIgnoreCase("1"))                  // 1 -> Public, 2 -> Private
+                    System.out.println("File Privacy: Public");
+                else
+                    System.out.println("File Privacy: Private");
+                System.out.print("\n");
+            });
         }
-        catch (IOException | ClassNotFoundException e)
+        catch (Exception e)
         {
             e.printStackTrace();
         }
@@ -331,7 +380,7 @@ public class ClientThread implements Runnable {
         try
         {
             @SuppressWarnings("unchecked") HashMap<String, HashMap<String, String>> all_file_list = (HashMap<String, HashMap<String, String>>) ois.readObject();
-            System.out.println("");
+            System.out.print("\n");
 
             all_file_list.forEach((clientID, files_list) ->
             {
@@ -355,6 +404,25 @@ public class ClientThread implements Runnable {
         catch (IOException | ClassNotFoundException e)
         {
             e.printStackTrace();
+        }
+    }
+
+    private void show_file_requests()
+    {
+        try {
+            int list_size = dataInputStream.readInt();                                          // server sends the list_size, to iterate the for loop
+
+            for(int i=0; i<list_size; i++)
+            {
+                System.out.println("Requester ID: " + dataInputStream.readUTF());               // server sends the requester id
+                System.out.println("Request ID: " + dataInputStream.readInt());                 // server sends the request id
+                System.out.println("Request Description: " + dataInputStream.readUTF());        // server sends the request description
+                System.out.print("\n");
+            }
+        }
+        catch (IOException ex)
+        {
+            ex.printStackTrace();
         }
     }
 }
