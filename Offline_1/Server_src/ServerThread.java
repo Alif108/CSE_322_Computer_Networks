@@ -20,8 +20,8 @@ public class ServerThread implements Runnable
     private HashMap<String, HashMap<String, String>> all_file_list;                 // ( ClientID, ( fileID, fileName ) )
     private HashMap<String, String> own_file_list;                                  // ( fileID, fileName )
 
-    private ArrayList<FileRequest> file_request_list;                                    // keeps all the file requests
-    private AtomicInteger request_id;                                                   // for generating req_id
+    private HashMap<Integer, FileRequest> file_request_list;                        // keeps all the file requests
+    private AtomicInteger request_id;                                               // for generating req_id
 
     private AtomicInteger chunks_stored;
     private int MAX_BUFFER_SIZE;
@@ -30,7 +30,7 @@ public class ServerThread implements Runnable
 
 
     ServerThread(Socket clientSocket, HashMap<String, Boolean> c_list, HashMap<String, HashMap<String, String>> f_list, AtomicInteger chunks_stored, int max_buffer_size,
-                 int max_chunk_size, int min_chunk_size, ArrayList<FileRequest> file_request_list, AtomicInteger req_id)
+                 int max_chunk_size, int min_chunk_size, HashMap<Integer, FileRequest> file_request_list, AtomicInteger req_id)
     {
         try
         {
@@ -86,33 +86,9 @@ public class ServerThread implements Runnable
 
                     if(privacy_choice == 1 || privacy_choice == 2)                      // 1 -> public,  2 -> private
                     {
-                        String clientFileName = dataInputStream.readUTF();              // read file name from client
-                        int clientFilesize = dataInputStream.readInt();                 // read file size from client
-
-                        if(receiveApproval(clientFilesize))                             // if file is allowed to be sent
-                        {
-                            dataOutputStream.writeUTF("File Sending Allowed");      // sending the approval message
-
-                            int chunk_size = (int)Math.floor(Math.random()*(MAX_CHUNK_SIZE-MIN_CHUNK_SIZE+1)+MIN_CHUNK_SIZE);   // generating a chunk size
-                            String file_ID = clientID + "_" + privacy_choice + "_" + get_file_count();                                // e.g 1705108_1_0
-
-                            dataOutputStream.writeInt(chunk_size);                      // sending the chunk_size
-                            dataOutputStream.writeUTF(file_ID);                         // sending the file_ID
-
-                            String file_to_be_saved = get_client_directory(clientID, privacy_choice) + clientFileName;     // e.g. "serverDir/1705108/private/random.txt"
-
-                            receiveFile(file_to_be_saved, clientFilesize, chunk_size);          // receiving the file
-                            increase_file_count();                                                              // file_count increases
-
-                            own_file_list.put(file_ID, clientFileName);                 // adding the file to own files list
-                            all_file_list.put(clientID, own_file_list);                 // updating the list in all files list
-                        }
-                        else
-                        {
-                            dataOutputStream.writeUTF("Buffer Overflow, Please Wait");  // sending the non-approval message
-                        }
+                        receive_file_util(privacy_choice);                              // performs all the receive file functionalities
                     }
-                    else                                                                    // invalid privacy choice
+                    else                                                                // invalid privacy choice
                         continue;
                 }
 
@@ -120,7 +96,7 @@ public class ServerThread implements Runnable
                 else if(choice == 2)
                 {
                     System.out.println(client_list);
-                    oos.writeObject(client_list);
+                    oos.writeObject(client_list);           // sending the clients list
                 }
 
                 // --- client chooses to see his/her uploaded contents --- //
@@ -178,7 +154,7 @@ public class ServerThread implements Runnable
                     String req_desc = dataInputStream.readUTF();                                        // getting the requst description
 
                     FileRequest file_request = new FileRequest(req_id, clientID, req_desc);             // (req_id, requester, req_desc)
-                    file_request_list.add(file_request);                                                // adding the request to the file_request_list
+                    file_request_list.put(req_id, file_request);                                        // adding the request to the file_request_list
 
                     dataOutputStream.writeUTF("File Request Issued");
                     dataOutputStream.writeUTF("Request ID: " + req_id);
@@ -192,16 +168,45 @@ public class ServerThread implements Runnable
                 {
                     dataOutputStream.writeInt(file_request_list.size());                                // sending the list size
 
-                    for(int i=0; i<file_request_list.size(); i++)
+                    for(Map.Entry<Integer, FileRequest>entry : file_request_list.entrySet())
                     {
-                        dataOutputStream.writeUTF(file_request_list.get(i).get_requester());            // sending requester_id
-                        dataOutputStream.writeInt(file_request_list.get(i).get_request_id());           // sending request_id
-                        dataOutputStream.writeUTF(file_request_list.get(i).get_req_desc());             // sending request_description
+                        dataOutputStream.writeUTF(entry.getValue().get_requester());                    // sending requester clientID
+                        dataOutputStream.writeInt(entry.getKey());                                      // sending request_id
+                        dataOutputStream.writeUTF(entry.getValue().get_req_desc());                     // sending request_description
+                    }
+                }
+
+                // --- client chooses to upload a file against a request --- //
+                else if(choice == 8)
+                {
+                    int req_id = dataInputStream.readInt();
+
+                    FileRequest fr = file_request_list.get(req_id);
+                    if(fr != null)
+                    {
+                        dataOutputStream.writeBoolean(true);                                    // sending confirmation to client
+                        System.out.println(clientID + ": Requested File About To Be Received");
+                        String file_id = receive_file_util(1);                          // receiving file from client   // 1 -> public, 2 -> private
+
+                        if(file_id != null) {
+                            fr.add_file(clientID, file_id);
+                            System.out.println(clientID + ": Requested File Uploaded To The Server");
+                            dataOutputStream.writeUTF("Requested File Upload Successful");                   // sending success message to client
+                        }
+                        else
+                        {
+                            System.out.println(clientID + ": Requested File Upload Failed");
+                            dataOutputStream.writeUTF("Requested File Upload Failed");
+                        }
+                    }
+                    else {
+                        dataOutputStream.writeBoolean(false);                                   // sending rejection to client
+                        dataOutputStream.writeUTF("RequestID Does Not Exist");
                     }
                 }
 
                 // --- client chooses to logout --- //
-                else if(choice == 8)
+                else if(choice == 9)
                 {
                     // closing the socket
                     client_logout();
@@ -364,7 +369,7 @@ public class ServerThread implements Runnable
                 if((new File(private_directory).mkdir()) && (new File(public_directory).mkdir()) && (fileCount.createNewFile()))       // if public, private directories and file_count are created
                 {
                     System.out.println(clientID + " logged in");
-                    System.out.println("Directories Created Successfully");
+                    System.out.println(clientID + ": Directories Created Successfully");
 
                     // -- initializing the file count -- //
                     FileWriter fw = new FileWriter(fileCount);
@@ -378,14 +383,14 @@ public class ServerThread implements Runnable
             }
             else                                                            // main directory cannot be created
             {
-                System.out.println("Sorry couldn’t create specified directory");
+                System.out.println(clientID + ": Sorry couldn’t create specified directory");
                 return false;
             }
         }
         else                                                                // directory exists previously
         {
             System.out.println(clientID + " logged in");
-            System.out.println("Directory Exists");
+            System.out.println(clientID + ": Directory Exists");
             return true;
         }
     }
@@ -394,9 +399,9 @@ public class ServerThread implements Runnable
     private String get_client_directory(String clientID, int choice)
     {
         if(choice == 1)
-            return (serverDirectory + clientID + "\\public\\");
+            return (serverDirectory + clientID + "\\public\\");             // e.g. server/1705108/public/
         else
-            return (serverDirectory + clientID + "\\private\\");
+            return (serverDirectory + clientID + "\\private\\");            // e.g. server/1705108/private/
     }
 
     /// returns the corresponding file directory againt a fileID
@@ -430,7 +435,7 @@ public class ServerThread implements Runnable
         }
         else
         {
-            System.out.println("File Extention Not Specified");
+            System.out.println(clientID + ": File Extention Not Specified");
             return null;
         }
     }
@@ -449,13 +454,51 @@ public class ServerThread implements Runnable
 
         if(file_to_be_deleted.delete())
         {
-            System.out.println("Corrupted File Deleted");
+            System.out.println(clientID + ": Corrupted File Deleted");
             return true;
         }
         else
         {
-            System.out.println("Corrupted File Not Deleted");
+            System.out.println(clientID + ": Corrupted File Not Deleted");
             return false;
+        }
+    }
+
+    /// performs all the functionalities of receiving a file
+    private String receive_file_util(int privacy_choice)
+    {
+        try {
+            String clientFileName = dataInputStream.readUTF();              // read file name from client
+            int clientFilesize = dataInputStream.readInt();                 // read file size from client
+
+            if (receiveApproval(clientFilesize))                             // if file is allowed to be sent
+            {
+                dataOutputStream.writeUTF("File Sending Allowed");      // sending the approval message
+
+                int chunk_size = (int) Math.floor(Math.random() * (MAX_CHUNK_SIZE - MIN_CHUNK_SIZE + 1) + MIN_CHUNK_SIZE);   // generating a chunk size
+                String file_ID = clientID + "_" + privacy_choice + "_" + get_file_count();                                // e.g 1705108_1_0
+
+                dataOutputStream.writeInt(chunk_size);                      // sending the chunk_size
+                dataOutputStream.writeUTF(file_ID);                         // sending the file_ID
+
+                String file_to_be_saved = get_client_directory(clientID, privacy_choice) + clientFileName;     // e.g. "serverDir/1705108/private/random.txt"
+
+                receiveFile(file_to_be_saved, clientFilesize, chunk_size);          // receiving the file
+                increase_file_count();                                              // file_count increases
+
+                own_file_list.put(file_ID, clientFileName);                 // adding the file to own files list
+                all_file_list.put(clientID, own_file_list);                 // updating the list in all files list
+
+                return file_ID;
+            } else {
+                dataOutputStream.writeUTF("Buffer Overflow, Please Wait");  // sending the non-approval message
+                return null;
+            }
+        }
+        catch (IOException ex)
+        {
+            ex.printStackTrace();
+            return null;
         }
     }
 
@@ -490,18 +533,18 @@ public class ServerThread implements Runnable
 
         // File Transfer Completion Confirmation //
         String completion_confirmation = dataInputStream.readUTF();             // getting client confirmation message of completion
-        System.out.println("From Cilent: " + completion_confirmation);
+        System.out.println(clientID + ": " + completion_confirmation);
 
         if(chunks_received == clientFileSize)                                   // if all the received chunks sums up to file_size
         {
             dataOutputStream.writeUTF("File Received Successfully");
-            System.out.println("File Received Successfully");
-            System.out.println("File Path: " + filePath);
+            System.out.println(clientID + ": File Received Successfully");
+            System.out.println(clientID + ": File Path -> " + filePath);
         }
         else
         {
             dataOutputStream.writeUTF("File Receiving Failed");
-            System.out.println("File Receiving Failed");
+            System.out.println(clientID + ": File Receiving Failed");
         }
 
         fileOutputStream.close();
@@ -511,7 +554,7 @@ public class ServerThread implements Runnable
     /// no acknowledgement
     private void sendFile(String filePath, int fileSize)
     {
-        System.out.println("Sending file: " + filePath);
+        System.out.println(clientID + ": Sending file -> " + filePath);
 
         FileInputStream fileInputStream;
         try
@@ -520,7 +563,7 @@ public class ServerThread implements Runnable
         }
         catch (FileNotFoundException e) {
             e.printStackTrace();
-            System.out.println("File Cannot Be Found");
+            System.out.println(clientID + ": File Cannot Be Found");
             return;
         }
 
@@ -543,13 +586,13 @@ public class ServerThread implements Runnable
             dataOutputStream.flush();
 
             dataOutputStream.writeUTF("File Sending Completed");                //  completion message from the server
-            System.out.println("File Sending Completed");
+            System.out.println(clientID + ": File Sending Completed");
 
             fileInputStream.close();
         }
         catch (IOException e)
         {
-            System.out.println("File Sending Failed");
+            System.out.println(clientID + ": File Sending Failed");
             e.printStackTrace();
         }
     }

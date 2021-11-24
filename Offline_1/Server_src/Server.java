@@ -14,7 +14,7 @@ public class Server {
     private static int MIN_CHUNK_SIZE = 1024;                                           // 1 KB
     private static AtomicInteger chunks_stored;                                         // keeps track of the chunks stored in the buffers
 
-    private static ArrayList<FileRequest> file_request_list;                                 // keeps all the file requests
+    private static HashMap<Integer, FileRequest> file_request_list;                     // keeps all the file requests -> (req_id, file_request)
     private static AtomicInteger req_id;                                                // central req_id kept for all clients
 
     public static void main(String[] args)
@@ -26,7 +26,7 @@ public class Server {
 
             chunks_stored = new AtomicInteger(0);
 
-            file_request_list = new ArrayList<FileRequest>();
+            file_request_list = new HashMap<Integer, FileRequest>();
             req_id = new AtomicInteger(0);
 
             System.out.println("Server Started...");
