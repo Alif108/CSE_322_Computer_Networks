@@ -91,8 +91,12 @@ public class ServerThread implements Runnable
                 // --- reading client choice --- //
                 choice = dataInputStream.readInt();
 
+                // --- Client Refresh --- //
+                if(choice == 0)
+                    continue;
+
                 // --- client chooses to send file --- //
-                if(choice == 1)
+                else if(choice == 1)
                 {
                     int privacy_choice = dataInputStream.readInt();                     // getting the privacy choice from client
 
@@ -107,8 +111,21 @@ public class ServerThread implements Runnable
                 // --- client chooses to lookup users --- //
                 else if(choice == 2)
                 {
-                    System.out.println(client_list);
-                    oos.writeObject(client_list);           // sending the clients list
+                    System.out.println(clientID + " : look up users");
+
+                    dataOutputStream.writeInt(client_list.size());
+
+                    client_list.forEach((user, online) ->
+                    {
+                        try {
+                            dataOutputStream.writeUTF(user);
+                            dataOutputStream.writeBoolean(online);
+                        }
+                        catch (IOException ex)
+                        {
+                            ex.printStackTrace();
+                        }
+                    });
                 }
 
                 // --- client chooses to see his/her uploaded contents --- //
@@ -200,7 +217,7 @@ public class ServerThread implements Runnable
                         System.out.println(clientID + ": Requested File About To Be Received");
                         String file_id = receive_file_util(1);                          // receiving file from client   // 1 -> public, 2 -> private
 
-                        if(file_id != null) {                                                                   // file sending failed
+                        if(file_id != null) {                                                                   // file sending successful
                             fr.add_file(clientID, file_id);                                                     // ( uploader, fileID )
                             System.out.println(clientID + ": Requested File Uploaded To The Server");
                             dataOutputStream.writeUTF("Requested File Upload Successful");                   // sending success message to client

@@ -44,10 +44,14 @@ public class ClientThread implements Runnable {
         {
             try {
 
+                System.out.println("Profile ID #" + student_ID);
+                System.out.println("-------------------------");
+
                 // -- checking of arrival of new messages -- //
                 if(dataInputStream.readBoolean())
                     System.out.println("New Messages In Inbox");
 
+                System.out.println("0. Refresh");
                 System.out.println("1. Upload File");
                 System.out.println("2. Lookup Users");
                 System.out.println("3. Lookup Own Files");
@@ -63,8 +67,12 @@ public class ClientThread implements Runnable {
 
                 dataOutputStream.writeInt(choice);                      // sending the choice to server
 
+                // --- Refresh --- //
+                if(choice == 0)
+                    continue;
+
                 // --- upload file --- //
-                if (choice == 1) {
+                else if (choice == 1) {
                     System.out.println("1. Public");
                     System.out.println("2. Private");
 
@@ -97,21 +105,8 @@ public class ClientThread implements Runnable {
                 // --- download file --- //
                 else if(choice == 5)
                 {
-                    System.out.print("Enter File ID > ");
-                    String requested_file_id = sc.next();
-                    dataOutputStream.writeUTF(requested_file_id);           // sending the requested file id
-
-                    String server_response = dataInputStream.readUTF();     // getting the server_response
-                    System.out.println("From Server: " + server_response);
-
-                    if(server_response.equalsIgnoreCase("File Not Found"))
-                        continue;                                           // if server could not locate the targeted file
-
-                    String filename = dataInputStream.readUTF();            // receiving the file name
-                    int file_size = dataInputStream.readInt();              // receiving the file_size
-                    int chunk_size = dataInputStream.readInt();             // receiving the chunk_size
-
-                    download_file(client_file_directory + filename, file_size, chunk_size);
+                    if(!download_file_util())
+                        continue;
                 }
 
                 // --- request file --- //
@@ -134,7 +129,7 @@ public class ClientThread implements Runnable {
                 // --- upload a file against an issued request --- //
                 else if(choice == 8)
                 {
-                    System.out.print("Enter the Request ID of the Request> ");
+                    System.out.print("Enter the Request ID of the Request #");
                     int req_id = sc.nextInt();
 
                     dataOutputStream.writeInt(req_id);              // sending the request_id to server
@@ -158,6 +153,8 @@ public class ClientThread implements Runnable {
                     logout();                               // logout closes all the streams and socket
                     break;
                 }
+
+                // --- invalid action --- //
                 else
                 {
                     System.out.println("Action Not Available");
@@ -230,21 +227,23 @@ public class ClientThread implements Runnable {
     {
         try {
 
-            String filePath = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img5.JPG";      // file to be uploaded from client side
-            File MyFile = new File(filePath);
+//            String filePath = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img5.JPG";      // file to be uploaded from client side
+//            File MyFile = new File(filePath);
 
-//            File MyFile = null;
-//            String filePath = null;
-//
-//            while(MyFile == null) {
-//                System.out.print("Enter The File Path >");
-//                filePath = sc.next();
-//
-//                MyFile = new File(filePath);                           // getting the file object
-//
-//                if(MyFile == null)
-//                    System.out.println("Please Insert A Correct File Path");
-//            }
+            File MyFile = null;
+            String filePath = null;
+
+            while(true) {
+                System.out.print("Enter The File Path >");
+                filePath = sc.next().trim();
+
+                MyFile = new File(filePath);                           // getting the file object
+
+                if(MyFile.exists())
+                    break;
+
+                System.out.println("Please Insert A Correct File Path");
+            }
 
             String fileName = MyFile.getName();                         // getting the file name    i.e. 1705108.pdf
             int fileSize = (int) MyFile.length();                       // collecting the file size
@@ -314,6 +313,43 @@ public class ClientThread implements Runnable {
         {
             e.printStackTrace();
         }
+    }
+
+    /// performs all the functionalities of downloading a file
+    private boolean download_file_util() throws IOException
+    {
+        System.out.print("Enter File ID > ");
+        String requested_file_id = sc.next();
+        dataOutputStream.writeUTF(requested_file_id);           // sending the requested file id
+
+        String server_response = dataInputStream.readUTF();     // getting the server_response
+        System.out.println("From Server: " + server_response);
+
+        if(server_response.equalsIgnoreCase("File Not Found"))
+            return false;                                           // if server could not locate the targeted file
+
+        boolean download_dir_exists = false;
+        String input_dir = null;
+
+        while(!download_dir_exists)
+        {
+            System.out.print("Enter Download Directory > ");
+            input_dir = sc.next().trim();
+
+            download_dir_exists = new File(input_dir).isDirectory();
+
+            if(!download_dir_exists)
+                System.out.println("Please Enter An Existing Directory");
+        }
+
+        String filename = dataInputStream.readUTF();            // receiving the file name
+        int file_size = dataInputStream.readInt();              // receiving the file_size
+        int chunk_size = dataInputStream.readInt();             // receiving the chunk_size
+
+//                    download_file(client_file_directory + filename, file_size, chunk_size);
+        download_file(input_dir + filename, file_size, chunk_size);
+
+        return true;
     }
 
     /// sends the ID to the server
@@ -404,26 +440,26 @@ public class ClientThread implements Runnable {
         }
     }
 
-    /// client_list is a hashmap of (String, Boolean) -> (client_ID, active_status)
+    /// this function shows all the clients and their active status
     private void show_client_list()
     {
-        try
-        {
-            @SuppressWarnings("unchecked") HashMap<String, Boolean> client_list = (HashMap<String, Boolean>)ois.readObject();
-            System.out.println("\n");
+        try {
+            int no_of_clients = dataInputStream.readInt();
 
-            for(Map.Entry<String, Boolean>entry : client_list.entrySet())
+            for(int i=0; i<no_of_clients; i++)
             {
-                System.out.print(entry.getKey());
-                if(entry.getValue())                                    // if user is online
+                System.out.print(dataInputStream.readUTF());
+
+                boolean online = dataInputStream.readBoolean();
+                if(online)
                     System.out.println(" : online");
                 else
                     System.out.println(" : offline");
             }
         }
-        catch (IOException | ClassNotFoundException e)
+        catch (IOException ex)
         {
-            e.printStackTrace();
+            ex.printStackTrace();
         }
     }
 
@@ -446,7 +482,7 @@ public class ClientThread implements Runnable {
                     if(file_info[1].equalsIgnoreCase("1"))              // 1 -> public, 2 -> private
                     {
                         System.out.println("File Name: " + fileName);
-                        System.out.println("File ID: " + fileID);
+                        System.out.println("File ID #" + fileID);
                         System.out.print("\n");
                     }
                 });
@@ -473,7 +509,7 @@ public class ClientThread implements Runnable {
                 String fileID = dataInputStream.readUTF();              // getting the fileID
                 int req_id = dataInputStream.readInt();                 // getting the req_id
 
-                System.out.println(uploader + " uploaded File# " + fileID + " for your Request ID# " + req_id);
+                System.out.println(uploader + " uploaded File #" + fileID + " for your Request ID #" + req_id);
             }
         }
         else
