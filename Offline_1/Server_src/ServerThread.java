@@ -20,8 +20,10 @@ public class ServerThread implements Runnable
     private HashMap<String, HashMap<String, String>> all_file_list;                 // ( ClientID, ( fileID, fileName ) )
     private HashMap<String, String> own_file_list;                                  // ( fileID, fileName )
 
-    private HashMap<Integer, FileRequest> file_request_list;                        // keeps all the file requests
+    private HashMap<Integer, FileRequest> file_request_list;                        // keeps all the file requests -> ( req_id, fileRequest )
     private AtomicInteger request_id;                                               // for generating req_id
+
+    private ArrayList<ClientMessages> message_list;                                 // message_list contains all the messages of clients -> (clientID, [ req_id ])
 
     private AtomicInteger chunks_stored;
     private int MAX_BUFFER_SIZE;
@@ -30,7 +32,8 @@ public class ServerThread implements Runnable
 
 
     ServerThread(Socket clientSocket, HashMap<String, Boolean> c_list, HashMap<String, HashMap<String, String>> f_list, AtomicInteger chunks_stored, int max_buffer_size,
-                 int max_chunk_size, int min_chunk_size, HashMap<Integer, FileRequest> file_request_list, AtomicInteger req_id)
+                 int max_chunk_size, int min_chunk_size, HashMap<Integer, FileRequest> file_request_list, AtomicInteger req_id,
+                 ArrayList<ClientMessages> message_list)
     {
         try
         {
@@ -51,6 +54,8 @@ public class ServerThread implements Runnable
 
             this.file_request_list = file_request_list;
             this.request_id = req_id;
+
+            this.message_list = message_list;
 
             t.start();
         }
@@ -77,7 +82,14 @@ public class ServerThread implements Runnable
             int choice = 0;
             while(true)
             {
-                choice = dataInputStream.readInt();                             // reading client choice
+                // --- notifying client of new messages --- //
+                if(check_messages())
+                    dataOutputStream.writeBoolean(true);
+                else
+                    dataOutputStream.writeBoolean(false);
+
+                // --- reading client choice --- //
+                choice = dataInputStream.readInt();
 
                 // --- client chooses to send file --- //
                 if(choice == 1)
@@ -188,10 +200,13 @@ public class ServerThread implements Runnable
                         System.out.println(clientID + ": Requested File About To Be Received");
                         String file_id = receive_file_util(1);                          // receiving file from client   // 1 -> public, 2 -> private
 
-                        if(file_id != null) {
-                            fr.add_file(clientID, file_id);
+                        if(file_id != null) {                                                                   // file sending failed
+                            fr.add_file(clientID, file_id);                                                     // ( uploader, fileID )
                             System.out.println(clientID + ": Requested File Uploaded To The Server");
                             dataOutputStream.writeUTF("Requested File Upload Successful");                   // sending success message to client
+
+                            ClientMessages msg = new ClientMessages(file_id, fr.get_requester(), req_id, clientID);         // new message -> (file_id, requester, req_id, uploader)
+                            message_list.add(msg);
                         }
                         else
                         {
@@ -205,8 +220,14 @@ public class ServerThread implements Runnable
                     }
                 }
 
-                // --- client chooses to logout --- //
+                // -- client chooses to view all the messages -- //
                 else if(choice == 9)
+                {
+                    view_messages();
+                }
+
+                // --- client chooses to logout --- //
+                else if(choice == 10)
                 {
                     // closing the socket
                     client_logout();
@@ -348,7 +369,6 @@ public class ServerThread implements Runnable
         }
     }
 
-
     /// this method create directories (main directory, private and public) and file_count.txt file in the main directory
     /// returns true if directory creates/exists, false otherwise
     private boolean makeDirectory(String clientID) throws IOException
@@ -363,8 +383,8 @@ public class ServerThread implements Runnable
                 String private_directory = directory + "\\private";
                 String public_directory = directory + "\\public";
 
-                String file_count_directory = directory + "\\file_count.txt";
-                File fileCount = new File(file_count_directory);            // keeps the track files being uploaded
+                String file_count_directory = directory + "\\file_count.txt";       // "file_count.txt" contains how many files client has
+                File fileCount = new File(file_count_directory);                    // keeps the track files being uploaded
 
                 if((new File(private_directory).mkdir()) && (new File(public_directory).mkdir()) && (fileCount.createNewFile()))       // if public, private directories and file_count are created
                 {
@@ -597,6 +617,52 @@ public class ServerThread implements Runnable
         }
     }
 
+    /// this method sends the client his/her messages
+    private void view_messages() throws IOException
+    {
+        ArrayList<ClientMessages> this_client_msg = new ArrayList<ClientMessages>();
+
+        for(int i=0; i<message_list.size(); i++)
+        {
+            if(message_list.get(i).get_requester().equalsIgnoreCase(clientID))
+                this_client_msg.add(message_list.get(i));                           // taking an arraylist of individual client messages
+        }
+
+        int msg_count = this_client_msg.size();
+        dataOutputStream.writeInt(msg_count);                                       // send how many messages of the requester
+
+        if(msg_count>0)
+        {
+            for (int i = 0; i < msg_count; i++) {
+                dataOutputStream.writeUTF(this_client_msg.get(i).get_uploader());       // sending the uploader name
+                dataOutputStream.writeUTF(this_client_msg.get(i).get_fileID());         // sending the fileID
+                dataOutputStream.writeInt(this_client_msg.get(i).get_req_id());         // sending the req_id
+            }
+
+            delete_messages(clientID);                                                  // deleting the messages after viewing
+        }
+    }
+
+    /// this method deletes the messages of a given client
+    private void delete_messages(String requester)
+    {
+        for(int i=0; i<message_list.size(); i++)
+        {
+            if(message_list.get(i).get_requester().equalsIgnoreCase(clientID))
+                message_list.remove(message_list.get(i));
+        }
+    }
+
+    /// notifies the client of new messages
+    private boolean check_messages()
+    {
+        for(int i=0; i<message_list.size(); i++)
+        {
+            if(message_list.get(i).get_requester().equalsIgnoreCase(clientID))          // if there is any message found
+                return true;
+        }
+        return false;
+    }
 
     private boolean check_connection()
     {

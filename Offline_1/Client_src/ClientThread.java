@@ -43,6 +43,11 @@ public class ClientThread implements Runnable {
         while(true)
         {
             try {
+
+                // -- checking of arrival of new messages -- //
+                if(dataInputStream.readBoolean())
+                    System.out.println("New Messages In Inbox");
+
                 System.out.println("1. Upload File");
                 System.out.println("2. Lookup Users");
                 System.out.println("3. Lookup Own Files");
@@ -51,7 +56,8 @@ public class ClientThread implements Runnable {
                 System.out.println("6. Request File");
                 System.out.println("7. Show File Requests");
                 System.out.println("8. Upload For Request");
-                System.out.println("9. Logout");
+                System.out.println("9. View Messages");
+                System.out.println("10. Logout");
 
                 int choice = sc.nextInt();                              // taking choice from user
 
@@ -140,8 +146,14 @@ public class ClientThread implements Runnable {
                     System.out.println("From Server: " + dataInputStream.readUTF());        // printing server message
                 }
 
+                // --- view all unread messages --- //
+                else if(choice == 9)
+                {
+                    view_messages();
+                }
+
                 // --- logout --- //
-                else if (choice == 9)
+                else if (choice == 10)
                 {
                     logout();                               // logout closes all the streams and socket
                     break;
@@ -217,9 +229,23 @@ public class ClientThread implements Runnable {
     private void upload_file_util()
     {
         try {
-            String filePath = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img5.JPG";      // file to be uploaded from client side
 
-            File MyFile = new File(filePath);                           // getting the file object
+            String filePath = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img5.JPG";      // file to be uploaded from client side
+            File MyFile = new File(filePath);
+
+//            File MyFile = null;
+//            String filePath = null;
+//
+//            while(MyFile == null) {
+//                System.out.print("Enter The File Path >");
+//                filePath = sc.next();
+//
+//                MyFile = new File(filePath);                           // getting the file object
+//
+//                if(MyFile == null)
+//                    System.out.println("Please Insert A Correct File Path");
+//            }
+
             String fileName = MyFile.getName();                         // getting the file name    i.e. 1705108.pdf
             int fileSize = (int) MyFile.length();                       // collecting the file size
 
@@ -432,6 +458,26 @@ public class ClientThread implements Runnable {
         {
             e.printStackTrace();
         }
+    }
+
+    // this method shows the messages of client
+    private void view_messages() throws IOException
+    {
+        int msg_count = dataInputStream.readInt();
+
+        if(msg_count > 0)
+        {
+            for (int i = 0; i < msg_count; i++)
+            {
+                String uploader = dataInputStream.readUTF();            // getting the uploader
+                String fileID = dataInputStream.readUTF();              // getting the fileID
+                int req_id = dataInputStream.readInt();                 // getting the req_id
+
+                System.out.println(uploader + " uploaded File# " + fileID + " for your Request ID# " + req_id);
+            }
+        }
+        else
+            System.out.println("No New Messages");
     }
 
     /// shows all the issued requests for files from other clients

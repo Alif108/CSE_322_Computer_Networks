@@ -17,12 +17,15 @@ public class Server {
     private static HashMap<Integer, FileRequest> file_request_list;                     // keeps all the file requests -> (req_id, file_request)
     private static AtomicInteger req_id;                                                // central req_id kept for all clients
 
+    private static ArrayList<ClientMessages> message_list;
+
     public static void main(String[] args)
     {
         try(ServerSocket serverSocket = new ServerSocket(5000))
         {
             client_list = new HashMap<String, Boolean>();
             file_list = new HashMap<String, HashMap<String, String>>();
+            message_list = new ArrayList<ClientMessages>();
 
             chunks_stored = new AtomicInteger(0);
 
@@ -38,7 +41,7 @@ public class Server {
                 System.out.println( socket + " connected...");
                 System.out.println("Client IP: " + socket.getRemoteSocketAddress().toString());
 
-                new ServerThread(socket, client_list, file_list, chunks_stored, MAX_BUFFER_SIZE, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, file_request_list, req_id);
+                new ServerThread(socket, client_list, file_list, chunks_stored, MAX_BUFFER_SIZE, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, file_request_list, req_id, message_list);
             }
         }
         catch (Exception e){
