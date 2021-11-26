@@ -9,7 +9,7 @@ public class Server {
     private static HashMap<String, Boolean> client_list;                                // clientID, active_status
     private static HashMap<String, HashMap<String, String>> file_list;                  // clientID, (fileID, filename)
 
-    private static int MAX_BUFFER_SIZE = 16 * 1024 * 1024;                              // 16 MB
+    private static int MAX_BUFFER_SIZE = 300 * 1024 * 1024;                              // 16 MB
     private static int MAX_CHUNK_SIZE = 4 * 1024;                                       // 4 KB
     private static int MIN_CHUNK_SIZE = 1024;                                           // 1 KB
     private static AtomicInteger chunks_stored;                                         // keeps track of the chunks stored in the buffers

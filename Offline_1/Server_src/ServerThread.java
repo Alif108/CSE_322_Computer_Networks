@@ -102,55 +102,24 @@ public class ServerThread implements Runnable
 
                     if(privacy_choice == 1 || privacy_choice == 2)                      // 1 -> public,  2 -> private
                     {
+                        System.out.println(clientID + " wants to upload a file");
                         receive_file_util(privacy_choice);                              // performs all the receive file functionalities
                     }
                     else                                                                // invalid privacy choice
                         continue;
-                }
-
-                // --- client chooses to lookup users --- //
-                else if(choice == 2)
-                {
-                    System.out.println(clientID + " : look up users");
-
-                    dataOutputStream.writeInt(client_list.size());
-
-                    client_list.forEach((user, online) ->
-                    {
-                        try {
-                            dataOutputStream.writeUTF(user);
-                            dataOutputStream.writeBoolean(online);
-                        }
-                        catch (IOException ex)
-                        {
-                            ex.printStackTrace();
-                        }
-                    });
-                }
-
-                // --- client chooses to see his/her uploaded contents --- //
-                else if(choice == 3)
-                {
-//                    send_own_file_list();
-                    oos.writeObject(own_file_list);
-                }
-
-                // --- client chooses to see all the public files --- //
-                else if(choice == 4)
-                {
-                    oos.writeObject(all_file_list);                     // sending the all_file_list to the client
+                    System.out.print("\n");
                 }
 
                 // --- client chooses to download file --- //
-                else if(choice == 5)
+                else if(choice == 2)
                 {
                     String requested_file_id = dataInputStream.readUTF();
-                    System.out.println("Client wants to download: " + requested_file_id);
+                    System.out.println(clientID + " wants to download: " + requested_file_id);
 
                     String filepath = get_file_directory(requested_file_id);            // getting the file_path
 
                     if (filepath == null) {
-                        System.out.println("File Not Found");
+                        System.out.println(clientID + ": File Not Found");
                         dataOutputStream.writeUTF("File Not Found");
                         continue;
                     } else
@@ -170,15 +139,51 @@ public class ServerThread implements Runnable
                     catch (NullPointerException e)
                     {
                         e.printStackTrace();
-                        System.out.println("File Not Found");
+                        System.out.println(clientID + ": File Not Found");
                         dataOutputStream.writeUTF("File Not Found");
                         continue;
                     }
                 }
 
+                // --- client chooses to see his/her uploaded contents --- //
+                else if(choice == 3)
+                {
+                    send_own_file_list();
+//                    oos.writeObject(own_file_list);
+                }
+
+                // --- client chooses to see all the public files --- //
+                else if(choice == 4)
+                {
+                    oos.writeObject(all_file_list);                     // sending the all_file_list to the client
+                }
+
+                // --- client chooses to lookup users --- //
+                else if(choice == 5)
+                {
+                    System.out.println(clientID + " wants to look up users");
+
+                    dataOutputStream.writeInt(client_list.size());
+
+                    client_list.forEach((user, online) ->
+                    {
+                        try {
+                            dataOutputStream.writeUTF(user);
+                            dataOutputStream.writeBoolean(online);
+                        }
+                        catch (IOException ex)
+                        {
+                            ex.printStackTrace();
+                        }
+                    });
+                    System.out.print("\n");
+                }
+
                 // --- client chooses to request a file --- //
                 else if (choice == 6)
                 {
+                    System.out.println(clientID + " wants to request a file");
+
                     int req_id = request_id.incrementAndGet();
                     String req_desc = dataInputStream.readUTF();                                        // getting the requst description
 
@@ -189,12 +194,15 @@ public class ServerThread implements Runnable
                     dataOutputStream.writeUTF("Request ID: " + req_id);
 
                     System.out.println("File Request Issued By: " + clientID);
-                    System.out.println("Request ID: " + req_id);
+                    System.out.println("Request ID #" + req_id);
+                    System.out.print("\n");
                 }
 
                 // --- client chooses to see file requests --- //
                 else if(choice == 7)
                 {
+                    System.out.println(clientID + " wants to see file requests");
+
                     dataOutputStream.writeInt(file_request_list.size());                                // sending the list size
 
                     for(Map.Entry<Integer, FileRequest>entry : file_request_list.entrySet())
@@ -204,11 +212,14 @@ public class ServerThread implements Runnable
                         dataOutputStream.writeUTF(entry.getValue().get_req_desc());                     // sending request_description
                         oos.writeObject(entry.getValue().get_uploaded_files());                         // sending the file list
                     }
+
+                    System.out.print("\n");
                 }
 
                 // --- client chooses to upload a file against a request --- //
                 else if(choice == 8)
                 {
+                    System.out.println(clientID + " wants to upload a file against a request");
                     int req_id = dataInputStream.readInt();
 
                     FileRequest fr = file_request_list.get(req_id);
@@ -236,12 +247,16 @@ public class ServerThread implements Runnable
                         dataOutputStream.writeBoolean(false);                                   // sending rejection to client
                         dataOutputStream.writeUTF("RequestID Does Not Exist");
                     }
+
+                    System.out.print("\n");
                 }
 
                 // -- client chooses to view all the messages -- //
                 else if(choice == 9)
                 {
+                    System.out.println(clientID + " wants to view all the messages");
                     view_messages();
+                    System.out.print("\n");
                 }
 
                 // --- client chooses to logout --- //
@@ -249,6 +264,7 @@ public class ServerThread implements Runnable
                 {
                     // closing the socket
                     client_logout();
+                    System.out.print("\n");
                     break;
                 }
 
@@ -267,24 +283,29 @@ public class ServerThread implements Runnable
     }
 
 
-    /// send the client a list of his own uploaded files
-//    private void send_own_file_list()
-//    {
-//        try{
-//            File public_dir = new File(get_client_directory(clientID, 1));
-//            File private_dir = new File(get_client_directory(clientID, 2));
-//
-//            String[] public_files = public_dir.list();          // listing all the public filenames as String[]
-//            String[] private_files = private_dir.list();        // listing all the private filenames as String[]
-//
-//            oos.writeObject(public_files);                      // sending the public_files list to client
-//            oos.writeObject(private_files);                     // sending the private_files list to client
-//        }
-//        catch (Exception e)
-//        {
-//            e.printStackTrace();
-//        }
-//    }
+    // send the client a list of his own uploaded files
+    private void send_own_file_list()
+    {
+        try{
+            dataOutputStream.writeInt(own_file_list.size());                // sending the size of own file list
+
+            own_file_list.forEach((fileID, fileName) ->
+            {
+                try {
+                    dataOutputStream.writeUTF(fileID);                          // sending the fileID
+                    dataOutputStream.writeUTF(fileName);                        // sending the fileName
+                }
+                catch (IOException ex)
+                {
+                    ex.printStackTrace();
+                }
+            });
+        }
+        catch (IOException ex)
+        {
+            ex.printStackTrace();
+        }
+    }
 
 
     /// this method puts the client in the client_list, makes him online and fetches/initializes his files_list and file_count
@@ -298,13 +319,14 @@ public class ServerThread implements Runnable
                 client_list.put(clientID, true);                                    // making the client online
                 this.own_file_list = new HashMap<String, String>();                 // initializing the own_file_list
 
+                System.out.println("New Client " + clientID + " has logged in");
                 return makeDirectory(clientID);
             }
             else                                                                    // client has logged in before
             {
                 if(client_list.get(clientID))                                       // if client is active from some other source
                 {
-                    System.out.println("Client " + clientID + " already logged in");
+                    System.out.println("Client " + clientID + " is already logged in");
                     return false;
                 }
                 else
@@ -312,6 +334,7 @@ public class ServerThread implements Runnable
                     client_list.put(clientID, true);                                // making the client active
                     this.own_file_list = all_file_list.get(clientID);               // getting the own_file_list
 
+                    System.out.println(clientID + " has logged in");
                     return makeDirectory(clientID);
                 }
             }
@@ -337,7 +360,7 @@ public class ServerThread implements Runnable
             dataOutputStream.close();
             clientSocket.close();
 
-            System.out.println("Client " + clientID + " Logged Out");
+            System.out.println(clientID + " has Logged Out");
         }
         catch (Exception ex)
         {
@@ -406,7 +429,6 @@ public class ServerThread implements Runnable
 
                 if((new File(private_directory).mkdir()) && (new File(public_directory).mkdir()) && (fileCount.createNewFile()))       // if public, private directories and file_count are created
                 {
-                    System.out.println(clientID + " logged in");
                     System.out.println(clientID + ": Directories Created Successfully");
 
                     // -- initializing the file count -- //
@@ -427,7 +449,6 @@ public class ServerThread implements Runnable
         }
         else                                                                // directory exists previously
         {
-            System.out.println(clientID + " logged in");
             System.out.println(clientID + ": Directory Exists");
             return true;
         }
@@ -554,7 +575,6 @@ public class ServerThread implements Runnable
             int chunks_received = 0;
 
             chunks_stored.addAndGet(chunk_size);                                    // adding the occupied buffer size
-//        System.out.println("Chunks Stored (before): " + chunks_stored.get());
 
             // receiving the file in chunks //
             while (bytes_left > 0 && occupied_buffer_bytes != -1)
@@ -570,7 +590,6 @@ public class ServerThread implements Runnable
             }
 
             chunks_stored.addAndGet(-chunk_size);                                   // freeing up the occupied buffer size
-//        System.out.println("Chunks Stored (after): " + chunks_stored.get());
 
             // File Transfer Completion Confirmation //
             String completion_confirmation = dataInputStream.readUTF();             // getting client confirmation message of completion
@@ -579,11 +598,11 @@ public class ServerThread implements Runnable
             if (chunks_received == clientFileSize)                                   // if all the received chunks sums up to file_size
             {
                 dataOutputStream.writeUTF("File Received Successfully");
-                System.out.println(clientID + ": File Received Successfully");
+                System.out.println(clientID + ": File Uploaded Successfully To The Server");
                 System.out.println(clientID + ": File Path -> " + filePath);
             } else {                                                                // something went wrong
                 dataOutputStream.writeUTF("File Receiving Failed");
-                System.out.println(clientID + ": File Receiving Failed");
+                System.out.println(clientID + ": File Uploading Failed");
                 delete_file(filePath);
             }
 

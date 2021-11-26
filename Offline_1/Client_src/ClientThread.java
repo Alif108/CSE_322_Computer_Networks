@@ -55,10 +55,10 @@ public class ClientThread implements Runnable {
 
                 System.out.println("0. Refresh");
                 System.out.println("1. Upload File");
-                System.out.println("2. Lookup Users");
+                System.out.println("2. Download File");
                 System.out.println("3. Lookup Own Files");
                 System.out.println("4. Lookup All Public Files");
-                System.out.println("5. Download File");
+                System.out.println("5. Lookup Users");
                 System.out.println("6. Request File");
                 System.out.println("7. Show File Requests");
                 System.out.println("8. Upload For Request");
@@ -87,28 +87,35 @@ public class ClientThread implements Runnable {
                     }
 
                     upload_file_util();
-                }
-
-                // --- lookup users --- //
-                else if (choice == 2) {
-                    show_client_list();
-                }
-
-                // --- lookup own files --- //
-                else if (choice == 3) {
-                    list_own_files();
-                }
-
-                // --- lookup all public files --- //
-                else if (choice == 4) {
-                    show_public_files();
+                    System.out.print("\n");
                 }
 
                 // --- download file --- //
+                else if (choice == 2)
+                {
+                    download_file_util();
+                    System.out.print("\n");
+                }
+
+                // --- lookup own files --- //
+                else if (choice == 3)
+                {
+                    list_own_files();
+                    System.out.print("\n");
+                }
+
+                // --- lookup all public files --- //
+                else if (choice == 4)
+                {
+                    show_public_files();
+                    System.out.print("\n");
+                }
+
+                // --- lookup users --- //
                 else if(choice == 5)
                 {
-                    if(!download_file_util())
-                        continue;
+                    show_client_list();
+                    System.out.print("\n");
                 }
 
                 // --- request file --- //
@@ -120,12 +127,15 @@ public class ClientThread implements Runnable {
 
                     System.out.println("From Server: " + dataInputStream.readUTF());    // server sends : File Request Issued
                     System.out.println("From Server: " + dataInputStream.readUTF());    // server sends : Request ID: #req_id
+
+                    System.out.print("\n");
                 }
 
                 // --- show all the file requests --- //
                 else if(choice == 7)
                 {
                     show_file_requests();
+                    System.out.print("\n");
                 }
 
                 // --- upload a file against an issued request --- //
@@ -141,12 +151,15 @@ public class ClientThread implements Runnable {
                         upload_file_util();
                     }
                     System.out.println("From Server: " + dataInputStream.readUTF());        // printing server message
+
+                    System.out.print("\n");
                 }
 
                 // --- view all unread messages --- //
                 else if(choice == 9)
                 {
                     view_messages();
+                    System.out.print("\n");
                 }
 
                 // --- logout --- //
@@ -160,6 +173,7 @@ public class ClientThread implements Runnable {
                 else
                 {
                     System.out.println("Action Not Available");
+                    System.out.print("\n");
                 }
             }
             catch (Exception ex)
@@ -173,9 +187,9 @@ public class ClientThread implements Runnable {
 
     /// sends file in chunks from the filePath
     /// sends acknowledgement
-    private void upload_file(String filePath, int fileSize, int chunk_size) throws IOException {
-
-        System.out.println("Sending file: " + filePath);
+    private void upload_file(String filePath, int fileSize, int chunk_size)
+    {
+        System.out.println("Uploading file: " + filePath);
 
         FileInputStream fileInputStream;
         try
@@ -202,24 +216,26 @@ public class ClientThread implements Runnable {
 
                 dataOutputStream.write(buffer, 0, occupied_buffer_bytes);                                           // sending the bytes
 
-                int ack = dataInputStream.readInt();
+                int ack = dataInputStream.readInt();                                                                    // receiving the acknowledgement
 
-                System.out.println("Client Sent: " + occupied_buffer_bytes + " bytes");
-                System.out.println("Server Received: " + ack + " bytes");
+//                System.out.println("Client Sent: " + occupied_buffer_bytes + " bytes");
+//                System.out.println("Server Received: " + ack + " bytes");
 
                 bytes_left -= occupied_buffer_bytes;                                                                    // bytes left to send
             }
             dataOutputStream.flush();
 
             // sending completion confirmation //
-            dataOutputStream.writeUTF("File Sending Completed");            // sending a confirmation message
+            dataOutputStream.writeUTF("File Uploading Completed");            // sending a confirmation message
             String server_confirmation = dataInputStream.readUTF();             // receiving a server confirmation
             System.out.println("From Server: " + server_confirmation);
 
             fileInputStream.close();
-        } catch (SocketTimeoutException ex)
+        }
+        catch (IOException ex)
         {
-            dataOutputStream.writeUTF("Connection Timed Out");
+//            dataOutputStream.writeUTF("Connection Timed Out");
+            ex.printStackTrace();
         }
     }
 
@@ -253,14 +269,14 @@ public class ClientThread implements Runnable {
             dataOutputStream.writeInt(fileSize);                        // sending the fileSize
 
             String server_response = dataInputStream.readUTF();         // receiving the server response
-            System.out.println(server_response);
+            System.out.println("From Server: " + server_response);
 
             if (server_response.equalsIgnoreCase("File Sending Allowed")) {
                 int chunk_size = dataInputStream.readInt();             // getting the chunk size chosen by server
                 String file_ID = dataInputStream.readUTF();             // getting the file_ID generated by server
 
                 System.out.println("File will be sent in " + chunk_size + " bytes chunk");
-                System.out.println("File ID: " + file_ID);
+                System.out.println("File ID #" + file_ID);
 
                 upload_file(filePath, fileSize, chunk_size);               // sending the file
             }
@@ -319,7 +335,7 @@ public class ClientThread implements Runnable {
     /// performs all the functionalities of downloading a file
     private boolean download_file_util() throws IOException
     {
-        System.out.print("Enter File ID > ");
+        System.out.print("Enter File ID #");
         String requested_file_id = sc.next();
         dataOutputStream.writeUTF(requested_file_id);           // sending the requested file id
 
@@ -419,25 +435,51 @@ public class ClientThread implements Runnable {
     /// this function shows all the files and their IDs uploaded by the client
     private void list_own_files()
     {
+//        try{
+//            @SuppressWarnings("unchecked") HashMap<String, String> own_file_list = (HashMap<String, String>) ois.readObject();
+//
+//            own_file_list.forEach((fileID, fileName) ->
+//            {
+//                String[] file_info = fileID.split("_");                     // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
+//
+//                System.out.println("File Name: " + fileName);
+//                System.out.println("File ID: " + fileID);
+//                if(file_info[1].equalsIgnoreCase("1"))                  // 1 -> Public, 2 -> Private
+//                    System.out.println("File Privacy: Public");
+//                else
+//                    System.out.println("File Privacy: Private");
+//                System.out.print("\n");
+//            });
+//        }
+//        catch (Exception e)
+//        {
+//            e.printStackTrace();
+//        }
         try{
-            @SuppressWarnings("unchecked") HashMap<String, String> own_file_list = (HashMap<String, String>) ois.readObject();
+            String[] file_info = null;
+            int file_list_size = dataInputStream.readInt();
 
-            own_file_list.forEach((fileID, fileName) ->
+            for(int i=0; i<file_list_size; i++)
             {
-                String[] file_info = fileID.split("_");                     // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
+                String fileID = dataInputStream.readUTF();                  // getting the fileID
+                String fileName = dataInputStream.readUTF();                // getting the fileName
 
                 System.out.println("File Name: " + fileName);
-                System.out.println("File ID: " + fileID);
-                if(file_info[1].equalsIgnoreCase("1"))                  // 1 -> Public, 2 -> Private
+                System.out.println("File ID #" + fileID);
+
+                file_info = fileID.split("_");                      // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
+
+                if(file_info[1].equalsIgnoreCase("1"))          // 1-> public, 2 -> private
                     System.out.println("File Privacy: Public");
                 else
                     System.out.println("File Privacy: Private");
+
                 System.out.print("\n");
-            });
+            }
         }
-        catch (Exception e)
+        catch (IOException ex)
         {
-            e.printStackTrace();
+            ex.printStackTrace();
         }
     }
 
