@@ -202,6 +202,7 @@ public class ServerThread implements Runnable
                         dataOutputStream.writeUTF(entry.getValue().get_requester());                    // sending requester clientID
                         dataOutputStream.writeInt(entry.getKey());                                      // sending request_id
                         dataOutputStream.writeUTF(entry.getValue().get_req_desc());                     // sending request_description
+                        oos.writeObject(entry.getValue().get_uploaded_files());                         // sending the file list
                     }
                 }
 
@@ -542,49 +543,56 @@ public class ServerThread implements Runnable
     /// receives file in chunks from a client
     /// puts the file in filePath
     /// sends acknowledgement to client
-    private void receiveFile(String filePath, int clientFileSize, int chunk_size) throws IOException
+    private void receiveFile(String filePath, int clientFileSize, int chunk_size)
     {
-        int occupied_buffer_bytes = 0;                                          // buffer is empty
-        FileOutputStream fileOutputStream = new FileOutputStream(filePath);
+        try {
+            int occupied_buffer_bytes = 0;                                          // buffer is empty
+            FileOutputStream fileOutputStream = new FileOutputStream(filePath);
 
-        byte[] buffer = new byte[chunk_size];                                   // buffer with size of chunk_size
-        int bytes_left = clientFileSize;                                        // whole file is left to be sent
-        int chunks_received = 0;
+            byte[] buffer = new byte[chunk_size];                                   // buffer with size of chunk_size
+            int bytes_left = clientFileSize;                                        // whole file is left to be sent
+            int chunks_received = 0;
 
-        chunks_stored.addAndGet(chunk_size);                                    // adding the occupied buffer size
+            chunks_stored.addAndGet(chunk_size);                                    // adding the occupied buffer size
 //        System.out.println("Chunks Stored (before): " + chunks_stored.get());
 
-        // receiving the file in chunks //
-        while (bytes_left > 0 && occupied_buffer_bytes != -1) {
-            occupied_buffer_bytes = dataInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading from input stream and putting it into buffer
-            dataOutputStream.writeInt(occupied_buffer_bytes);                                                       // sending the acknowledgement
+            // receiving the file in chunks //
+            while (bytes_left > 0 && occupied_buffer_bytes != -1)
+            {
+                occupied_buffer_bytes = dataInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading from input stream and putting it into buffer
 
-            fileOutputStream.write(buffer, 0, occupied_buffer_bytes);                                            // writing to file
+                dataOutputStream.writeInt(occupied_buffer_bytes);                                                       // sending the acknowledgement
 
-            bytes_left -= occupied_buffer_bytes;
-            chunks_received += occupied_buffer_bytes;
-        }
+                fileOutputStream.write(buffer, 0, occupied_buffer_bytes);                                           // writing to file
 
-        chunks_stored.addAndGet(-chunk_size);                                   // freeing up the occupied buffer size
+                bytes_left -= occupied_buffer_bytes;
+                chunks_received += occupied_buffer_bytes;
+            }
+
+            chunks_stored.addAndGet(-chunk_size);                                   // freeing up the occupied buffer size
 //        System.out.println("Chunks Stored (after): " + chunks_stored.get());
 
-        // File Transfer Completion Confirmation //
-        String completion_confirmation = dataInputStream.readUTF();             // getting client confirmation message of completion
-        System.out.println(clientID + ": " + completion_confirmation);
+            // File Transfer Completion Confirmation //
+            String completion_confirmation = dataInputStream.readUTF();             // getting client confirmation message of completion
+            System.out.println(clientID + ": " + completion_confirmation);
 
-        if(chunks_received == clientFileSize)                                   // if all the received chunks sums up to file_size
-        {
-            dataOutputStream.writeUTF("File Received Successfully");
-            System.out.println(clientID + ": File Received Successfully");
-            System.out.println(clientID + ": File Path -> " + filePath);
-        }
-        else
-        {
-            dataOutputStream.writeUTF("File Receiving Failed");
-            System.out.println(clientID + ": File Receiving Failed");
-        }
+            if (chunks_received == clientFileSize)                                   // if all the received chunks sums up to file_size
+            {
+                dataOutputStream.writeUTF("File Received Successfully");
+                System.out.println(clientID + ": File Received Successfully");
+                System.out.println(clientID + ": File Path -> " + filePath);
+            } else {                                                                // something went wrong
+                dataOutputStream.writeUTF("File Receiving Failed");
+                System.out.println(clientID + ": File Receiving Failed");
+                delete_file(filePath);
+            }
 
-        fileOutputStream.close();
+            fileOutputStream.close();
+        }
+        catch (Exception ex)
+        {
+            ex.printStackTrace();
+        }
     }
 
     /// sends file (from filePath) to client
@@ -687,12 +695,17 @@ public class ServerThread implements Runnable
             BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
             int con = in.read();
-            if (con == -1) {
+            if (con == -1)
+            {
                 System.out.println("Connection Lost");
                 in.close();
+                dataOutputStream.writeBoolean(false);
                 return false;
-            } else
+            }
+            else {
+                dataOutputStream.writeBoolean(true);
                 return true;
+            }
         }
         catch (Exception e)
         {

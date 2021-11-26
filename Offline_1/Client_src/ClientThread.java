@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.*;
 
 public class ClientThread implements Runnable {
@@ -44,6 +45,7 @@ public class ClientThread implements Runnable {
         {
             try {
 
+                System.out.print("\n");
                 System.out.println("Profile ID #" + student_ID);
                 System.out.println("-------------------------");
 
@@ -171,7 +173,7 @@ public class ClientThread implements Runnable {
 
     /// sends file in chunks from the filePath
     /// sends acknowledgement
-    private void upload_file(String filePath, int fileSize, int chunk_size){
+    private void upload_file(String filePath, int fileSize, int chunk_size) throws IOException {
 
         System.out.println("Sending file: " + filePath);
 
@@ -199,6 +201,7 @@ public class ClientThread implements Runnable {
                 occupied_buffer_bytes = fileInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading bytes from file and putting them into buffer
 
                 dataOutputStream.write(buffer, 0, occupied_buffer_bytes);                                           // sending the bytes
+
                 int ack = dataInputStream.readInt();
 
                 System.out.println("Client Sent: " + occupied_buffer_bytes + " bytes");
@@ -214,11 +217,9 @@ public class ClientThread implements Runnable {
             System.out.println("From Server: " + server_confirmation);
 
             fileInputStream.close();
-        }
-        catch (IOException e)
+        } catch (SocketTimeoutException ex)
         {
-            System.out.println("File Sending Failed");
-            e.printStackTrace();
+            dataOutputStream.writeUTF("Connection Timed Out");
         }
     }
 
@@ -527,12 +528,40 @@ public class ClientThread implements Runnable {
                 System.out.println("Requester ID: " + dataInputStream.readUTF());               // server sends the requester id
                 System.out.println("Request ID: " + dataInputStream.readInt());                 // server sends the request id
                 System.out.println("Request Description: " + dataInputStream.readUTF());        // server sends the request description
+
+                @SuppressWarnings("unchecked") HashMap<String, ArrayList<String>> uploaded_files = (HashMap<String, ArrayList<String>>)ois.readObject();
+                uploaded_files.forEach((uploader, files_list) ->
+                {
+                    System.out.println("Uploader: " + uploader);                                // printing teh uploader
+                    files_list.forEach((fileID) ->
+                    {
+                        System.out.println("File ID #" + fileID);                               // printing the uploader's files
+                    });
+                });
                 System.out.print("\n");
             }
         }
-        catch (IOException ex)
+        catch (IOException | ClassNotFoundException ex)
         {
             ex.printStackTrace();
+        }
+    }
+
+    /// confirm connection
+    private boolean confirm_connection() throws IOException
+    {
+        try {
+            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+            out.write(1);
+
+            out.close();
+
+            return dataInputStream.readBoolean();
+        }
+        catch (Exception ex)
+        {
+            ex.printStackTrace();
+            return dataInputStream.readBoolean();
         }
     }
 }

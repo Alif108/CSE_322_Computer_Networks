@@ -6,14 +6,14 @@ public class FileRequest
     private String requester;
     private int request_id;
     private String request_description;
-    private HashMap<String, HashMap<String, Boolean>> uploaded_files;      // ( uploader, ( file_ID, seen/unseen )
+    private HashMap<String, ArrayList<String>> uploaded_files;      // ( uploader, [ file_ID ] )
 
     public FileRequest(int request_id, String requester, String request_description)
     {
         this.request_id = request_id;
         this.requester = requester;
         this.request_description = request_description;
-        this.uploaded_files = new HashMap<String, HashMap<String, Boolean>>();
+        this.uploaded_files = new HashMap<String, ArrayList<String>>();
     }
 
     public int get_request_id()
@@ -31,29 +31,21 @@ public class FileRequest
         return request_description;
     }
 
-    public HashMap<String, HashMap<String, Boolean>> get_uploaded_files()
+    public HashMap<String, ArrayList<String>> get_uploaded_files()
     {
         return uploaded_files;
     }
 
     public void add_file(String uploader, String fileID)
     {
-        HashMap<String, Boolean> upload_info = null;
+       ArrayList<String> upload_info = null;
 
         if(uploaded_files.containsKey(uploader))
-            upload_info = uploaded_files.get(uploader);            // if request has no uploader against it
+            upload_info = uploaded_files.get(uploader);             // if request has no uploader against it
         else
-            upload_info = new HashMap<String, Boolean>();          // if request has uploader against it
+            upload_info = new ArrayList<String>();                  // if request has uploader against it
 
-        upload_info.put(fileID, false);                                                     // ( fileID, unread )
-        uploaded_files.put(uploader, upload_info);                                          // ( uploader, ( fileID, unread ))
-    }
-
-
-    public void see_message(String uploader, String fileID)
-    {
-        HashMap<String, Boolean> uploaded_files_by_uploader = uploaded_files.get(uploader);
-
-        uploaded_files_by_uploader.put(fileID, true);
+        upload_info.add(fileID);                                    // [ fileID ]
+        uploaded_files.put(uploader, upload_info);                  // ( uploader, [ fileID ] )
     }
 }
