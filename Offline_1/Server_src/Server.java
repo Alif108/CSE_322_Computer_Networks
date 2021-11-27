@@ -9,9 +9,9 @@ public class Server {
     private static HashMap<String, Boolean> client_list;                                // clientID, active_status
     private static HashMap<String, HashMap<String, String>> file_list;                  // clientID, (fileID, filename)
 
-    private static int MAX_BUFFER_SIZE = 300 * 1024 * 1024;                              // 16 MB
-    private static int MAX_CHUNK_SIZE = 4 * 1024;                                       // 4 KB
-    private static int MIN_CHUNK_SIZE = 1024;                                           // 1 KB
+    private static long MAX_BUFFER_SIZE = 1 * 1024 * 1024 * 1024;                       // 1 GB
+    private static int MAX_CHUNK_SIZE = 16 * 1024;                                      // 16 KB
+    private static int MIN_CHUNK_SIZE = 4 * 1024;                                       // 4 KB
     private static AtomicInteger chunks_stored;                                         // keeps track of the chunks stored in the buffers
 
     private static HashMap<Integer, FileRequest> file_request_list;                     // keeps all the file requests -> (req_id, file_request)
@@ -38,8 +38,8 @@ public class Server {
             while(true)
             {
                 Socket socket = serverSocket.accept();
-                System.out.println( socket + " connected...");
                 System.out.println("Client IP: " + socket.getRemoteSocketAddress().toString());
+                System.out.println("Client Port: " + socket.getPort());
 
                 new ServerThread(socket, client_list, file_list, chunks_stored, MAX_BUFFER_SIZE, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, file_request_list, req_id, message_list);
             }

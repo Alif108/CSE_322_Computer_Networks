@@ -1,9 +1,0 @@
-* ClientList does not get updated unless logging in 
-* No Maps get updated during runtime
-* Get sure about socket.setSoTimeOut()
-
-
-
-* proper message when client tries to multiple login
-* show file requests -> don't use hashmaps
-* show public files -> don't use hashmaps

@@ -1,6 +1,5 @@
 import java.io.*;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.util.*;
 
 public class ClientThread implements Runnable {
@@ -34,10 +33,18 @@ public class ClientThread implements Runnable {
     @Override
     public void run() {
 
-        if (!logIn())                                            // if login is failed
+        try {
+            if (!logIn())                                            // if login is failed
+            {
+                System.out.println("Login Failed");
+                logout();
+                return;
+            }
+        }
+        catch (IOException ex)
         {
-            System.out.println("Login Failed");
-            logout();
+            System.out.println("Sorry :(  Login Failed");
+            ex.printStackTrace();
             return;
         }
 
@@ -51,7 +58,7 @@ public class ClientThread implements Runnable {
 
                 // -- checking of arrival of new messages -- //
                 if(dataInputStream.readBoolean())
-                    System.out.println("New Messages In Inbox");
+                    System.out.println("New Messages In Inbox\n");
 
                 System.out.println("0. Refresh");
                 System.out.println("1. Upload File");
@@ -187,7 +194,7 @@ public class ClientThread implements Runnable {
 
     /// sends file in chunks from the filePath
     /// sends acknowledgement
-    private void upload_file(String filePath, int fileSize, int chunk_size)
+    private void upload_file(String filePath, int fileSize, int chunk_size) throws IOException
     {
         System.out.println("Uploading file: " + filePath);
 
@@ -207,129 +214,105 @@ public class ClientThread implements Runnable {
         int bytes_left = fileSize;                                      // whole file is left to sent
         byte[] buffer = new byte[chunk_size];                           // buffer with size of chunk_size
 
-        try
+        // sending the file in chunks //
+        while (bytes_left > 0 && occupied_buffer_bytes != -1)
         {
-            // sending the file in chunks //
-            while (bytes_left > 0 && occupied_buffer_bytes != -1)
-            {
-                occupied_buffer_bytes = fileInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading bytes from file and putting them into buffer
+            occupied_buffer_bytes = fileInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading bytes from file and putting them into buffer
 
-                dataOutputStream.write(buffer, 0, occupied_buffer_bytes);                                           // sending the bytes
+            dataOutputStream.write(buffer, 0, occupied_buffer_bytes);                                           // sending the bytes
 
-                int ack = dataInputStream.readInt();                                                                    // receiving the acknowledgement
+            int ack = dataInputStream.readInt();                                                                    // receiving the acknowledgement
 
 //                System.out.println("Client Sent: " + occupied_buffer_bytes + " bytes");
 //                System.out.println("Server Received: " + ack + " bytes");
 
-                bytes_left -= occupied_buffer_bytes;                                                                    // bytes left to send
-            }
-            dataOutputStream.flush();
-
-            // sending completion confirmation //
-            dataOutputStream.writeUTF("File Uploading Completed");            // sending a confirmation message
-            String server_confirmation = dataInputStream.readUTF();             // receiving a server confirmation
-            System.out.println("From Server: " + server_confirmation);
-
-            fileInputStream.close();
+            bytes_left -= occupied_buffer_bytes;                                                                    // bytes left to send
         }
-        catch (IOException ex)
-        {
-//            dataOutputStream.writeUTF("Connection Timed Out");
-            ex.printStackTrace();
-        }
+        dataOutputStream.flush();
+
+        // sending completion confirmation //
+        dataOutputStream.writeUTF("File Uploading Completed");            // sending a confirmation message
+        String server_confirmation = dataInputStream.readUTF();             // receiving a server confirmation
+        System.out.println("From Server: " + server_confirmation);
+
+        fileInputStream.close();
     }
 
     /// performs all the functionalities of uploading a file
-    private void upload_file_util()
+    private void upload_file_util() throws IOException
     {
-        try {
+        File MyFile;
+        String filePath;
 
-//            String filePath = "E:\\Others\\Practice_on_Networking\\File_Server\\Client\\src\\files\\img5.JPG";      // file to be uploaded from client side
-//            File MyFile = new File(filePath);
+        while(true) {
+            System.out.print("Enter The File Path >");
+            filePath = sc.next().trim();
 
-            File MyFile = null;
-            String filePath = null;
+            MyFile = new File(filePath);                           // getting the file object
 
-            while(true) {
-                System.out.print("Enter The File Path >");
-                filePath = sc.next().trim();
+            if(MyFile.exists())
+                break;
 
-                MyFile = new File(filePath);                           // getting the file object
-
-                if(MyFile.exists())
-                    break;
-
-                System.out.println("Please Insert A Correct File Path");
-            }
-
-            String fileName = MyFile.getName();                         // getting the file name    i.e. 1705108.pdf
-            int fileSize = (int) MyFile.length();                       // collecting the file size
-
-            dataOutputStream.writeUTF(fileName);                        // sending the fileName
-            dataOutputStream.writeInt(fileSize);                        // sending the fileSize
-
-            String server_response = dataInputStream.readUTF();         // receiving the server response
-            System.out.println("From Server: " + server_response);
-
-            if (server_response.equalsIgnoreCase("File Sending Allowed")) {
-                int chunk_size = dataInputStream.readInt();             // getting the chunk size chosen by server
-                String file_ID = dataInputStream.readUTF();             // getting the file_ID generated by server
-
-                System.out.println("File will be sent in " + chunk_size + " bytes chunk");
-                System.out.println("File ID #" + file_ID);
-
-                upload_file(filePath, fileSize, chunk_size);               // sending the file
-            }
+            System.out.println("Please Insert A Correct File Path");
         }
-        catch (IOException ex)
-        {
-            ex.printStackTrace();
+
+        String fileName = MyFile.getName();                         // getting the file name    i.e. 1705108.pdf
+        int fileSize = (int) MyFile.length();                       // collecting the file size
+
+        dataOutputStream.writeUTF(fileName);                        // sending the fileName
+        dataOutputStream.writeInt(fileSize);                        // sending the fileSize
+
+        String server_response = dataInputStream.readUTF();         // receiving the server response
+        System.out.println("From Server: " + server_response);
+
+        if (server_response.equalsIgnoreCase("File Sending Allowed")) {
+            int chunk_size = dataInputStream.readInt();             // getting the chunk size chosen by server
+            String file_ID = dataInputStream.readUTF();             // getting the file_ID generated by server
+
+            System.out.println("File will be sent in " + chunk_size + " bytes chunk");
+            System.out.println("File ID #" + file_ID);
+
+            upload_file(filePath, fileSize, chunk_size);               // sending the file
         }
     }
 
     /// downloads file in chunks in the filePath
     /// no acknowledgement
-    private void download_file(String filePath, int fileSize, int chunk_size)
+    private void download_file(String filePath, int fileSize, int chunk_size) throws IOException
     {
-        try
+        int occupied_buffer_bytes = 0;                                          // buffer is empty
+        FileOutputStream fileOutputStream = new FileOutputStream(filePath);
+
+        byte[] buffer = new byte[chunk_size];                                   // buffer with size of chunk_size
+        int bytes_left = fileSize;                                              // whole file is left to be sent
+        int chunks_received = 0;                                                // no chunks received yet
+
+        // receiving the file in chunks //
+        while (bytes_left > 0 && occupied_buffer_bytes != -1)
         {
-            int occupied_buffer_bytes = 0;                                          // buffer is empty
-            FileOutputStream fileOutputStream = new FileOutputStream(filePath);
+            occupied_buffer_bytes = dataInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading from input stream and putting it into buffer
 
-            byte[] buffer = new byte[chunk_size];                                   // buffer with size of chunk_size
-            int bytes_left = fileSize;                                              // whole file is left to be sent
-            int chunks_received = 0;                                                // no chunks received yet
+            fileOutputStream.write(buffer,0, occupied_buffer_bytes);                                            // writing to file
 
-            // receiving the file in chunks //
-            while (bytes_left > 0 && occupied_buffer_bytes != -1)
-            {
-                occupied_buffer_bytes = dataInputStream.read(buffer, 0, Math.min(buffer.length, bytes_left));       // reading from input stream and putting it into buffer
-
-                fileOutputStream.write(buffer,0, occupied_buffer_bytes);                                            // writing to file
-
-                bytes_left -= occupied_buffer_bytes;
-                chunks_received += occupied_buffer_bytes;
-            }
-
-            System.out.println(dataInputStream.readUTF());                          // server completion message
-
-            // File Transfer Completion Confirmation //
-            if(chunks_received == fileSize)
-            {
-                System.out.println("File Downloaded Successfully");
-                System.out.println("File Path: " + filePath);
-            }
-            else
-            {
-                System.out.println("File Downloading Failed");
-            }
-
-            fileOutputStream.close();
+            bytes_left -= occupied_buffer_bytes;
+            chunks_received += occupied_buffer_bytes;
         }
-        catch (Exception e)
+
+        String server_completion = dataInputStream.readUTF();                   // server completion message
+        System.out.println("From Server: " + server_completion);
+
+        // File Transfer Completion Confirmation //
+        if(chunks_received == fileSize)
         {
-            e.printStackTrace();
+            System.out.println("File Downloaded Successfully");
+            System.out.println("File Path: " + filePath);
         }
+        else
+        {
+            System.out.println("File Downloading Failed");
+        }
+
+        fileOutputStream.close();
     }
 
     /// performs all the functionalities of downloading a file
@@ -370,36 +353,24 @@ public class ClientThread implements Runnable {
     }
 
     /// sends the ID to the server
-    private boolean logIn(){
+    private boolean logIn() throws IOException
+    {
         System.out.print("Input Your Student ID to Login > ");
         this.student_ID = sc.nextLine();                            // taking the student ID input
 
-        try
-        {
-            dataOutputStream.writeUTF(student_ID);                      // sending ID to server
-            String serverApproval = dataInputStream.readUTF();         // getting the server response
+        dataOutputStream.writeUTF(student_ID);                      // sending ID to server
+        String serverApproval = dataInputStream.readUTF();         // getting the server response
 
-            return !serverApproval.equalsIgnoreCase("login failed");
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-            return false;
-        }
+        return !serverApproval.equalsIgnoreCase("login failed");
     }
 
     /// this method closes all the streams and socket
-    private void logout(){
-        try
-        {
-            dataOutputStream.close();
-            dataInputStream.close();
-            ois.close();
-            socket.close();
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
+    private void logout() throws IOException
+    {
+        dataOutputStream.close();
+        dataInputStream.close();
+        ois.close();
+        socket.close();
     }
 
     /// this function shows all the files uploaded by the client
@@ -433,109 +404,74 @@ public class ClientThread implements Runnable {
 //    }
 
     /// this function shows all the files and their IDs uploaded by the client
-    private void list_own_files()
+    private void list_own_files() throws IOException
     {
-//        try{
-//            @SuppressWarnings("unchecked") HashMap<String, String> own_file_list = (HashMap<String, String>) ois.readObject();
-//
-//            own_file_list.forEach((fileID, fileName) ->
-//            {
-//                String[] file_info = fileID.split("_");                     // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
-//
-//                System.out.println("File Name: " + fileName);
-//                System.out.println("File ID: " + fileID);
-//                if(file_info[1].equalsIgnoreCase("1"))                  // 1 -> Public, 2 -> Private
-//                    System.out.println("File Privacy: Public");
-//                else
-//                    System.out.println("File Privacy: Private");
-//                System.out.print("\n");
-//            });
-//        }
-//        catch (Exception e)
-//        {
-//            e.printStackTrace();
-//        }
-        try{
-            String[] file_info = null;
-            int file_list_size = dataInputStream.readInt();
+        String[] file_info;
+        int file_list_size = dataInputStream.readInt();
 
-            for(int i=0; i<file_list_size; i++)
-            {
-                String fileID = dataInputStream.readUTF();                  // getting the fileID
-                String fileName = dataInputStream.readUTF();                // getting the fileName
-
-                System.out.println("File Name: " + fileName);
-                System.out.println("File ID #" + fileID);
-
-                file_info = fileID.split("_");                      // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
-
-                if(file_info[1].equalsIgnoreCase("1"))          // 1-> public, 2 -> private
-                    System.out.println("File Privacy: Public");
-                else
-                    System.out.println("File Privacy: Private");
-
-                System.out.print("\n");
-            }
-        }
-        catch (IOException ex)
+        for(int i=0; i<file_list_size; i++)
         {
-            ex.printStackTrace();
+            String fileID = dataInputStream.readUTF();                  // getting the fileID
+            String fileName = dataInputStream.readUTF();                // getting the fileName
+
+            System.out.println("File Name: " + fileName);
+            System.out.println("File ID #" + fileID);
+
+            file_info = fileID.split("_");                      // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
+
+            if(file_info[1].equalsIgnoreCase("1"))          // 1-> public, 2 -> private
+                System.out.println("File Privacy: Public");
+            else
+                System.out.println("File Privacy: Private");
+
+            System.out.print("\n");
         }
     }
 
     /// this function shows all the clients and their active status
-    private void show_client_list()
+    private void show_client_list() throws IOException
     {
-        try {
-            int no_of_clients = dataInputStream.readInt();
+        int no_of_clients = dataInputStream.readInt();
 
-            for(int i=0; i<no_of_clients; i++)
-            {
-                System.out.print(dataInputStream.readUTF());
-
-                boolean online = dataInputStream.readBoolean();
-                if(online)
-                    System.out.println(" : online");
-                else
-                    System.out.println(" : offline");
-            }
-        }
-        catch (IOException ex)
+        for(int i=0; i<no_of_clients; i++)
         {
-            ex.printStackTrace();
+            System.out.print(dataInputStream.readUTF());
+
+            boolean online = dataInputStream.readBoolean();
+            if(online)
+                System.out.println(" : online");
+            else
+                System.out.println(" : offline");
         }
     }
 
     /// all_files_list has records as (clientID, (filename, privacy_status))
-    private void show_public_files()
+    private void show_public_files() throws IOException
     {
-        try
-        {
-            @SuppressWarnings("unchecked") HashMap<String, HashMap<String, String>> all_file_list = (HashMap<String, HashMap<String, String>>) ois.readObject();
-            System.out.print("\n");
+        int public_file_size = dataInputStream.readInt();                   // receiving the fileSize
 
-            all_file_list.forEach((clientID, files_list) ->
-            {
+        for(int i=0; i< public_file_size; i++)
+        {
+            String clientID = dataInputStream.readUTF();                    // receiving the clientID
+            int client_file_count = dataInputStream.readInt();              // receiving the client_file_count
+
+            if(client_file_count != 0) {
                 System.out.println("Files of " + clientID);
                 System.out.println("----------------------");
 
-                files_list.forEach((fileID, fileName) ->
-                {
-                    String[] file_info = fileID.split("_");                     // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
-                    if(file_info[1].equalsIgnoreCase("1"))              // 1 -> public, 2 -> private
+                for (int j = 0; j < client_file_count; j++) {
+                    String fileID = dataInputStream.readUTF();                  // receiving fileID
+                    String fileName = dataInputStream.readUTF();                // receiving fileName
+
+                    String[] fileInfo = fileID.split("_");              // splits ID "1705108_1_0" -> ["1705108", "1", "0"]
+                    if (fileInfo[1].equalsIgnoreCase("1"))           // 1-> public, 2-> private
                     {
                         System.out.println("File Name: " + fileName);
                         System.out.println("File ID #" + fileID);
-                        System.out.print("\n");
                     }
-                });
+                }
                 System.out.print("\n");
-            });
-            System.out.print("\n");
-        }
-        catch (IOException | ClassNotFoundException e)
-        {
-            e.printStackTrace();
+            }
         }
     }
 
@@ -560,50 +496,32 @@ public class ClientThread implements Runnable {
     }
 
     /// shows all the issued requests for files from other clients
-    private void show_file_requests()
+    private void show_file_requests() throws IOException
     {
-        try {
-            int list_size = dataInputStream.readInt();                                          // server sends the list_size, to iterate the for loop
+        int list_size = dataInputStream.readInt();                                          // server sends the list_size, to iterate the for loop
 
-            for(int i=0; i<list_size; i++)
+        for(int i=0; i<list_size; i++)
+        {
+            System.out.println("Requester ID: " + dataInputStream.readUTF());               // server sends the requester id
+            System.out.println("Request ID: " + dataInputStream.readInt());                 // server sends the request id
+            System.out.println("Request Description: " + dataInputStream.readUTF());        // server sends the request description
+
+            int uploaded_files_size = dataInputStream.readInt();                            // getting the uploaded file list size
+
+            for(int j=0; j<uploaded_files_size; j++)
             {
-                System.out.println("Requester ID: " + dataInputStream.readUTF());               // server sends the requester id
-                System.out.println("Request ID: " + dataInputStream.readInt());                 // server sends the request id
-                System.out.println("Request Description: " + dataInputStream.readUTF());        // server sends the request description
+                String uploader = dataInputStream.readUTF();                                // getting the clientID
+                System.out.println("Uploader: " + uploader);
 
-                @SuppressWarnings("unchecked") HashMap<String, ArrayList<String>> uploaded_files = (HashMap<String, ArrayList<String>>)ois.readObject();
-                uploaded_files.forEach((uploader, files_list) ->
+                int uploader_file_count = dataInputStream.readInt();                        // getting how many files the uploader uploaded
+
+                for(int k=0; k<uploader_file_count; k++)
                 {
-                    System.out.println("Uploader: " + uploader);                                // printing teh uploader
-                    files_list.forEach((fileID) ->
-                    {
-                        System.out.println("File ID #" + fileID);                               // printing the uploader's files
-                    });
-                });
-                System.out.print("\n");
+                    String fileID = dataInputStream.readUTF();                              // getting the fileID
+                    System.out.println("File ID #" + fileID);
+                }
             }
-        }
-        catch (IOException | ClassNotFoundException ex)
-        {
-            ex.printStackTrace();
-        }
-    }
-
-    /// confirm connection
-    private boolean confirm_connection() throws IOException
-    {
-        try {
-            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-            out.write(1);
-
-            out.close();
-
-            return dataInputStream.readBoolean();
-        }
-        catch (Exception ex)
-        {
-            ex.printStackTrace();
-            return dataInputStream.readBoolean();
+            System.out.print("\n");
         }
     }
 }
