@@ -77,6 +77,7 @@
 #include "ns3/dsr-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/yans-wifi-helper.h"
+#include "ns3/netanim-module.h"
 #include<string>  
 
 #include "ns3/flow-monitor-module.h"     
@@ -178,7 +179,7 @@ MyApp::SendPacket (void)
   InetSocketAddress sinkAddr = InetSocketAddress::ConvertFrom (m_peer);
   InetSocketAddress srcAddr = InetSocketAddress::ConvertFrom (m_self);
   NS_LOG_UNCOND(srcAddr.GetIpv4 ()<< "--->"<< sinkAddr.GetIpv4 ());
-  NS_LOG_UNCOND (Simulator::Now ().GetSeconds () << "\t" << "pakcet size: " << m_packetSize <<"\n");
+  NS_LOG_UNCOND (Simulator::Now ().GetSeconds () << "\t" << "packet size: " << m_packetSize <<"\n");
 
   if (++m_packetsSent < m_nPackets)
     {
@@ -218,16 +219,13 @@ main (int argc, char *argv[])
   int packetSize = 1024;  // in bytes
   double TotalTime = 50.0;
   double m_txp = 7.5; 
-  double range = 25;  // in meters
+  double range = 7;  // in meters
   int phyMode_rate = 1; // in Mbps
+  double distance = 5;
+  uint16_t nodes_in_a_row = 2;
+  bool tcpOnly = true;; 
+  double errorRate = 0.0001;
   // int nodeSpeed = 5;  // in m/s
-
-  std::string tcpVariant ("Vegas");
-  std::string m_protocolName ("AODV");
-  std::string phyMode ("DsssRate" + phyMode_rate + "Mbps");
-  std::string tr_name ("my_network3");
-  std::string dataRate (std::__cxx11::to_string(nPackets_per_second * packetSize) + "Bps");
-
 
   CommandLine cmd (__FILE__);
   cmd.AddValue ("nWifi", "number of nodes", nWifi);
@@ -236,8 +234,18 @@ main (int argc, char *argv[])
   cmd.AddValue ("range", "transmission range of a node", range);
   cmd.AddValue ("nPackets", "total number of packets to be sent by a node", nPackets);
   cmd.AddValue ("nPackets_per_second", "number of packets sent per second", nPackets_per_second);
-  cmd.AddValue ("phyMode_rate", "wifi station manager mode", phyMode_rate;
+  cmd.AddValue ("phyMode_rate", "wifi station manager mode", phyMode_rate);
+  cmd.AddValue ("distance", "distance between the nodes", distance);
+  cmd.AddValue ("nodes_in_a_row", "how many nodes will remain in a row", nodes_in_a_row);
+  cmd.AddValue ("tcpOnly", "print information of tcp flows only", tcpOnly);
+  cmd.AddValue ("errorRate", "error rate of wifi physical", errorRate);
   cmd.Parse (argc, argv);
+
+  std::string tcpVariant ("Vegas");
+  std::string m_protocolName ("AODV");
+  std::string phyMode ("DsssRate" + std::__cxx11::to_string(phyMode_rate) + "Mbps");
+  std::string tr_name ("my_network3");
+  std::string dataRate (std::__cxx11::to_string(nPackets_per_second * packetSize) + "Bps");
 
 
   // ---------------------- Configure Network ---------------- //
@@ -267,7 +275,7 @@ main (int argc, char *argv[])
   // wifiChannel.AddPropagationLoss ("ns3::FriisPropagationLossModel");
   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel");
   wifiPhy.SetChannel (wifiChannel.Create ());
-  wifiPhy.SetErrorRateModel ("ns3::YansErrorRateModel");
+
 
 
 
@@ -287,6 +295,20 @@ main (int argc, char *argv[])
 
 
 
+  // ------------- Error Model -------------- //
+
+  wifiPhy.SetErrorRateModel ("ns3::YansErrorRateModel");
+  Ptr<RateErrorModel> em = CreateObject<RateErrorModel> ();
+  em->SetAttribute ("ErrorRate", DoubleValue(errorRate));
+
+  for(int i=0; i<nWifi; i++)
+  {
+    Config::Set("/NodeList/0/DeviceList/" + std::__cxx11::to_string(i) + "/$ns3::WifiNetDevice/Phy/$ns3::YansWifiPhy/PostReceptionErrorModel", PointerValue(em));
+    Config::Set("/NodeList/0/DeviceList/" + std::__cxx11::to_string(i) + "/$ns3::WifiNetDevice/Phy/$ns3::YansWifiPhy/PostReceptionErrorModel", PointerValue(em)); 
+  }
+  
+
+
   // --------------- Position and Mobility --------------- //
 
   MobilityHelper mobility;
@@ -297,9 +319,9 @@ main (int argc, char *argv[])
   mobility.SetPositionAllocator ("ns3::GridPositionAllocator",
                                  "MinX", DoubleValue (0.0),
                                  "MinY", DoubleValue (0.0),
-                                 "DeltaX", DoubleValue (5.0),
-                                 "DeltaY", DoubleValue (5.0),
-                                 "GridWidth", UintegerValue (2),
+                                 "DeltaX", DoubleValue (distance),
+                                 "DeltaY", DoubleValue (distance),
+                                 "GridWidth", UintegerValue (nodes_in_a_row),
                                  "LayoutType", StringValue ("RowFirst"));
   // each object will be attached a static position.
   // i.e., once set by the "position allocator", the
@@ -377,17 +399,20 @@ main (int argc, char *argv[])
       if(i == 0)
       {
         AsciiTraceHelper asciiTraceHelper;
-        Ptr<OutputStreamWrapper> stream = asciiTraceHelper.CreateFileStream ("my_network3.cwnd");
+        Ptr<OutputStreamWrapper> stream = asciiTraceHelper.CreateFileStream ("my_network3_4.cwnd");
         ns3TcpSocket->TraceConnectWithoutContext ("CongestionWindow", MakeBoundCallback (&CwndChange, stream));
       }
     }
 
     
+  AsciiTraceHelper ascii;
+  wifiPhy.EnableAsciiAll(ascii.CreateFileStream("phy.tr"));
 
+  AnimationInterface anim("my_network3_anim.xml");
 
   FlowMonitorHelper flowmon;                             
   Ptr<FlowMonitor> monitor = flowmon.InstallAll();        
-  // wifiPhy.EnablePcap("Node0", adhocDevices.Get (0));
+  wifiPhy.EnablePcap("Node0", adhocDevices.Get (0));
 
 
   Simulator::Stop (Seconds (TotalTime));
@@ -413,30 +438,68 @@ main (int argc, char *argv[])
   {
     Ipv4FlowClassifier::FiveTuple t = classifier->FindFlow(iter->first);
 
-    NS_LOG_UNCOND("\nFlow Id: " << iter->first);
-    NS_LOG_UNCOND("Src Addr: " << t.sourceAddress);
-    NS_LOG_UNCOND("Dst Addr: " << t.destinationAddress);
-    NS_LOG_UNCOND("Sent Packets: " << iter->second.txPackets);
-    NS_LOG_UNCOND("Received Packets: " << iter->second.rxPackets);
-    NS_LOG_UNCOND("Lost Packets: " << iter->second.txPackets - iter->second.rxPackets);
-    // NS_LOG_UNCOND("Lost Packets: " << iter->second.lostPackets);
-    NS_LOG_UNCOND("Packet Delivery Ratio: " << iter->second.rxPackets*100/iter->second.txPackets << "%");
-    // NS_LOG_UNCOND("Packet Loss Ratio: " << (iter->second.txPackets - iter->second.rxPackets)*100/iter->second.txPackets << "%");
-    NS_LOG_UNCOND("Packet Loss Ratio: " << (iter->second.lostPackets)*100/iter->second.txPackets << "%");
-    NS_LOG_UNCOND("Delay: " << iter->second.delaySum);
-    NS_LOG_UNCOND("Jitter: " << iter->second.jitterSum);
-    NS_LOG_UNCOND("Throughput: " << iter->second.rxBytes * 8.0 /(iter->second.timeLastRxPacket.GetSeconds() - iter->second.timeFirstTxPacket.GetSeconds())/1024 << "kbps");
+    if(tcpOnly)
+    {
+      if(t.protocol == 6)       // 6 -> tcp, 17 -> UDP
+      {
+        NS_LOG_UNCOND("\nFlow Id: " << iter->first);
+        NS_LOG_UNCOND("Protocol: TCP");
+        NS_LOG_UNCOND("Src Addr: " << t.sourceAddress);
+        NS_LOG_UNCOND("Dst Addr: " << t.destinationAddress);
+        NS_LOG_UNCOND("Sent Packets: " << iter->second.txPackets);
+        NS_LOG_UNCOND("Received Packets: " << iter->second.rxPackets);
+        NS_LOG_UNCOND("Lost Packets: " << iter->second.txPackets - iter->second.rxPackets);
+        // NS_LOG_UNCOND("Lost Packets: " << iter->second.lostPackets);
+        NS_LOG_UNCOND("Packet Delivery Ratio: " << iter->second.rxPackets*100/iter->second.txPackets << "%");
+        // NS_LOG_UNCOND("Packet Loss Ratio: " << (iter->second.txPackets - iter->second.rxPackets)*100/iter->second.txPackets << "%");
+        NS_LOG_UNCOND("Packet Loss Ratio: " << (iter->second.lostPackets)*100/iter->second.txPackets << "%");
+        NS_LOG_UNCOND("Delay: " << iter->second.delaySum);
+        NS_LOG_UNCOND("Jitter: " << iter->second.jitterSum);
+        NS_LOG_UNCOND("Throughput: " << iter->second.rxBytes * 8.0 /(iter->second.timeLastRxPacket.GetSeconds() - iter->second.timeFirstTxPacket.GetSeconds())/1024 << "kbps");
 
 
-    sentPackets += iter->second.txPackets;
-    receivedPackets += iter->second.rxPackets;
-    lostPackets += (iter->second.txPackets - iter->second.rxPackets);
-    // lostPackets += (iter->second.lostPackets);
-    avgThroughput += iter->second.rxBytes * 8.0 /(iter->second.timeLastRxPacket.GetSeconds() - iter->second.timeFirstTxPacket.GetSeconds())/1024;
-    delay += iter->second.delaySum;
-    jitter += iter->second.jitterSum;
+        sentPackets += iter->second.txPackets;
+        receivedPackets += iter->second.rxPackets;
+        lostPackets += (iter->second.txPackets - iter->second.rxPackets);
+        // lostPackets += (iter->second.lostPackets);
+        avgThroughput += iter->second.rxBytes * 8.0 /(iter->second.timeLastRxPacket.GetSeconds() - iter->second.timeFirstTxPacket.GetSeconds())/1024;
+        delay += iter->second.delaySum;
+        jitter += iter->second.jitterSum;
 
-    j++;
+        j++;
+      }
+    }
+    else
+    {
+        NS_LOG_UNCOND("\nFlow Id: " << iter->first);
+        if(t.protocol == 6)
+          NS_LOG_UNCOND("Protocol: TCP");
+        else if(t.protocol == 17)
+          NS_LOG_UNCOND("Protocol: UDP");
+        NS_LOG_UNCOND("Src Addr: " << t.sourceAddress);
+        NS_LOG_UNCOND("Dst Addr: " << t.destinationAddress);
+        NS_LOG_UNCOND("Sent Packets: " << iter->second.txPackets);
+        NS_LOG_UNCOND("Received Packets: " << iter->second.rxPackets);
+        NS_LOG_UNCOND("Lost Packets: " << iter->second.txPackets - iter->second.rxPackets);
+        // NS_LOG_UNCOND("Lost Packets: " << iter->second.lostPackets);
+        NS_LOG_UNCOND("Packet Delivery Ratio: " << iter->second.rxPackets*100/iter->second.txPackets << "%");
+        // NS_LOG_UNCOND("Packet Loss Ratio: " << (iter->second.txPackets - iter->second.rxPackets)*100/iter->second.txPackets << "%");
+        NS_LOG_UNCOND("Packet Loss Ratio: " << (iter->second.lostPackets)*100/iter->second.txPackets << "%");
+        NS_LOG_UNCOND("Delay: " << iter->second.delaySum);
+        NS_LOG_UNCOND("Jitter: " << iter->second.jitterSum);
+        NS_LOG_UNCOND("Throughput: " << iter->second.rxBytes * 8.0 /(iter->second.timeLastRxPacket.GetSeconds() - iter->second.timeFirstTxPacket.GetSeconds())/1024 << "kbps");
+
+
+        sentPackets += iter->second.txPackets;
+        receivedPackets += iter->second.rxPackets;
+        lostPackets += (iter->second.txPackets - iter->second.rxPackets);
+        // lostPackets += (iter->second.lostPackets);
+        avgThroughput += iter->second.rxBytes * 8.0 /(iter->second.timeLastRxPacket.GetSeconds() - iter->second.timeFirstTxPacket.GetSeconds())/1024;
+        delay += iter->second.delaySum;
+        jitter += iter->second.jitterSum;
+
+        j++;
+    }
   }
 
   avgThroughput = avgThroughput/j;
